@@ -107,6 +107,50 @@ describe("Bun HTTP app", () => {
     });
   });
 
+  it("accepts Wolfram 14.1+ untitled notebook heartbeats with an empty window title", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0 });
+    servers.push(server);
+
+    const base = `http://127.0.0.1:${server.port}`;
+    const now = Date.now();
+
+    await fetch(`${base}/agents/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agentSessionId: "agent-143",
+        wolframVersion: "14.3",
+        platform: "Unix",
+        seenAt: now,
+      }),
+    });
+
+    const notebookResponse = await fetch(`${base}/notebooks/heartbeat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agentSessionId: "agent-143",
+        frontendObjectKey: "fe-untitled",
+        displayName: "Untitled notebook e5f6b81",
+        windowTitle: "",
+        wolframVersion: "14.3",
+        platform: "Unix",
+        permissions,
+        seenAt: now + 100,
+      }),
+    });
+
+    expect(notebookResponse.status).toBe(200);
+    await expect(notebookResponse.json()).resolves.toMatchObject({
+      notebook: {
+        notebookId: "notebook-1",
+        displayName: "Untitled notebook e5f6b81",
+        windowTitle: "",
+      },
+    });
+  });
+
   it("heartbeats agents and returns 404 when no live agent exists", async () => {
     const state = new BackendState(() => "notebook-1");
     const server = await createBunHttpApp({ state, port: 0 });

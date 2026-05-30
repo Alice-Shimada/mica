@@ -111,7 +111,7 @@ export function createFetchHandler(state: BackendState) {
           agentSessionId,
           frontendObjectKey: readRequiredString(body.frontendObjectKey, "frontendObjectKey"),
           displayName: readRequiredString(body.displayName, "displayName"),
-          windowTitle: readRequiredString(body.windowTitle, "windowTitle"),
+          windowTitle: readRequiredPossiblyEmptyString(body.windowTitle),
           wolframVersion: readRequiredString(body.wolframVersion, "wolframVersion"),
           platform: readRequiredString(body.platform, "platform"),
           permissions: readPermissions(body.permissions),
@@ -310,6 +310,11 @@ function readRequiredString(value: unknown, fieldName: string): string {
   const text = readOptionalString(value);
   if (!text) throw new Error("BAD_REQUEST");
   return text;
+}
+
+function readRequiredPossiblyEmptyString(value: unknown): string {
+  if (typeof value !== "string") throw new Error("BAD_REQUEST");
+  return value.trim();
 }
 
 function readOptionalString(value: unknown): string | undefined {
