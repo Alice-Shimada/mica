@@ -1493,7 +1493,10 @@ syntaxSummary[sym_Symbol] := Quiet @ Check[
 
 relatedSymbols[sym_Symbol] := Quiet @ Check[
   Replace[
-    Take[ToString /@ WolframLanguageData[SymbolName[sym], "RelatedSymbols"], UpTo[10]],
+    Take[
+      ToString /@ (WolframLanguageData[SymbolName[sym], "RelatedSymbols"] /. e_Entity :> e[[2]]),
+      UpTo[10]
+    ],
     _Missing -> {}
   ],
   {}
@@ -1519,13 +1522,14 @@ SymbolCandidate[sym_String] := Module[{s},
   |>
 ];
 
-SymbolLookup[query_String] := Module[{sym, candidates},
+SymbolLookup[query_String] := Module[{sym, candidates, exactName},
   If[StringLength[StringTrim[query]] == 0,
     Return[<|"status" -> "bad_request", "message" -> "Query must not be empty."|>]
   ];
-  sym = Quiet @ Check[ToExpression[query, StandardForm, Hold], $Failed];
-  If[MatchQ[sym, Hold[_Symbol]] && Context[ReleaseHold[sym]] === "System`",
-    Return @ SymbolDetail[ReleaseHold[sym]]
+  exactName = "System`" <> query;
+  If[Length[Names[exactName]] === 1,
+    sym = ToExpression[exactName];
+    Return @ SymbolDetail[sym]
   ];
 
   candidates = Names["System`*" <> query <> "*"];

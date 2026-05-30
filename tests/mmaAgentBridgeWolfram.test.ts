@@ -971,7 +971,7 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       'syntaxSummary[sym_Symbol] := Quiet @ Check[',
       'Replace[WolframLanguageData[SymbolName[sym], "SyntaxInformation"], _Missing -> <||>]',
       'relatedSymbols[sym_Symbol] := Quiet @ Check[',
-      'Take[ToString /@ WolframLanguageData[SymbolName[sym], "RelatedSymbols"], UpTo[10]]',
+      'ToString /@ (WolframLanguageData[SymbolName[sym], "RelatedSymbols"] /. e_Entity :> e[[2]])',
       '_Missing -> {}',
       'documentationURL[sym_Symbol] := Quiet @ Check["https://reference.wolfram.com/language/ref/" <> SymbolName[sym] <> ".html"',
       '"mma_symbol_lookup"',
@@ -980,8 +980,10 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       '"status" -> "ambiguous"',
       '"status" -> "not_found"',
       'Names["System`*" <> query <> "*"]',
-      'ToExpression[query, StandardForm, Hold]',
-      'Context[ReleaseHold[sym]] === "System`"',
+      '"System`" <> query',
+      'Length[Names[exactName]] === 1',
+      'ToExpression[exactName]',
+      'WolframLanguageData[SymbolName[sym], "RelatedSymbols"] /. e_Entity :> e[[2]]',
     ];
 
     for (const snippet of requiredSnippets) {
