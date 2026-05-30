@@ -232,6 +232,7 @@ describe("Bun backend MCP compatibility", () => {
       "mma_status",
       "mma_list_notebooks",
       "mma_select_notebook",
+      "mma_symbol_lookup",
       "mma_list_cells",
       "mma_read_cell",
       "mma_insert_cell",
@@ -256,6 +257,32 @@ describe("Bun backend MCP compatibility", () => {
       structuredContent: expect.objectContaining({ ok: true, activeNotebookId: "nb-1" })
     });
     expect(state.activeNotebookId).toBe("nb-1");
+  });
+
+  it("registers mma_symbol_lookup with query parameter", async () => {
+    const registrations: Array<{ name: string; handler: (args: Record<string, unknown>) => Promise<unknown> }> = [];
+    const server = {
+      tool(name: string, _description: string, _schema: unknown, handler: (args: Record<string, unknown>) => Promise<unknown>) {
+        registrations.push({ name, handler });
+      }
+    };
+
+    const state = makeBackendState();
+    state.activeNotebookId = "nb-1";
+    registerBackendMcpTools(server as never, state);
+
+    const lookupHandler = registrations.find((entry) => entry.name === "mma_symbol_lookup")!.handler;
+
+    const handlerPromise = lookupHandler({ query: "Plot" });
+
+    // Resolve the queued request so the handler promise can settle
+    const queued = state.queue.snapshot().queued;
+    expect(queued).toHaveLength(1);
+    state.queue.resolve(queued[0]!.requestId, { ok: true }, Date.now());
+
+    await expect(handlerPromise).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ ok: true })
+    });
   });
 
   it("stops the HTTP server when MCP startup fails", async () => {

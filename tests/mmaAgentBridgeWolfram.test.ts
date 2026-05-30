@@ -960,4 +960,32 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source).toContain('SynchronousUpdating -> False');
     expect(source).not.toContain('legacyStatus = Dynamic[');
   });
+
+  it("defines symbol lookup helpers for agent-friendly documentation queries", () => {
+    const requiredSnippets = [
+      'SymbolLookup[query_String] := Module',
+      'SymbolDetail[sym_Symbol] :=',
+      'SymbolCandidate[sym_String] := Module',
+      'usageString[sym_Symbol] := Quiet @ Check[ToString[sym::usage]',
+      'optionList[sym_Symbol] := Quiet @ Check[Map[<|"name" -> ToString[#[[1]]], "default" -> ToString[#[[2]]]|> &, Options[sym]]',
+      'syntaxSummary[sym_Symbol] := Quiet @ Check[',
+      'Replace[WolframLanguageData[SymbolName[sym], "SyntaxInformation"], _Missing -> <||>]',
+      'relatedSymbols[sym_Symbol] := Quiet @ Check[',
+      'Take[ToString /@ WolframLanguageData[SymbolName[sym], "RelatedSymbols"], UpTo[10]]',
+      '_Missing -> {}',
+      'documentationURL[sym_Symbol] := Quiet @ Check["https://reference.wolfram.com/language/ref/" <> SymbolName[sym] <> ".html"',
+      '"mma_symbol_lookup"',
+      'SymbolLookup[Lookup[args, "query", ""]]',
+      '"status" -> "found"',
+      '"status" -> "ambiguous"',
+      '"status" -> "not_found"',
+      'Names["System`*" <> query <> "*"]',
+      'ToExpression[query, StandardForm, Hold]',
+      'Context[ReleaseHold[sym]] === "System`"',
+    ];
+
+    for (const snippet of requiredSnippets) {
+      expect(source).toContain(snippet);
+    }
+  });
 });

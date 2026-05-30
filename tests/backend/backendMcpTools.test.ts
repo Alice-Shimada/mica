@@ -162,6 +162,7 @@ describe("backend MCP tool registration", () => {
       "mma_status",
       "mma_list_notebooks",
       "mma_select_notebook",
+      "mma_symbol_lookup",
       "mma_list_cells",
       "mma_read_cell",
       "mma_insert_cell",

@@ -1482,6 +1482,63 @@ StartMMAAgentHiddenAgent[] := Module[{},
   $HiddenAgentTask
 ];
 
+usageString[sym_Symbol] := Quiet @ Check[ToString[sym::usage], "No usage information available."];
+
+optionList[sym_Symbol] := Quiet @ Check[Map[<|"name" -> ToString[#[[1]]], "default" -> ToString[#[[2]]]|> &, Options[sym]], {}];
+
+syntaxSummary[sym_Symbol] := Quiet @ Check[
+  Replace[WolframLanguageData[SymbolName[sym], "SyntaxInformation"], _Missing -> <||>],
+  <||>
+];
+
+relatedSymbols[sym_Symbol] := Quiet @ Check[
+  Replace[
+    Take[ToString /@ WolframLanguageData[SymbolName[sym], "RelatedSymbols"], UpTo[10]],
+    _Missing -> {}
+  ],
+  {}
+];
+
+documentationURL[sym_Symbol] := Quiet @ Check["https://reference.wolfram.com/language/ref/" <> SymbolName[sym] <> ".html", ""];
+
+SymbolDetail[sym_Symbol] := <|
+  "status" -> "found",
+  "symbol" -> SymbolName[sym],
+  "usage" -> usageString[sym],
+  "options" -> optionList[sym],
+  "attributes" -> ToString /@ Attributes[sym],
+  "syntax" -> syntaxSummary[sym],
+  "related" -> relatedSymbols[sym],
+  "url" -> documentationURL[sym]
+|>;
+
+SymbolCandidate[sym_String] := Module[{s},
+  s = ToExpression[sym, StandardForm, Hold];
+  <|"symbol" -> sym,
+    "usage" -> StringTake[usageString[ReleaseHold[s]], UpTo[200]]
+  |>
+];
+
+SymbolLookup[query_String] := Module[{sym, candidates},
+  If[StringLength[StringTrim[query]] == 0,
+    Return[<|"status" -> "bad_request", "message" -> "Query must not be empty."|>]
+  ];
+  sym = Quiet @ Check[ToExpression[query, StandardForm, Hold], $Failed];
+  If[MatchQ[sym, Hold[_Symbol]] && Context[ReleaseHold[sym]] === "System`",
+    Return @ SymbolDetail[ReleaseHold[sym]]
+  ];
+
+  candidates = Names["System`*" <> query <> "*"];
+  If[candidates === {},
+    Return[<|"status" -> "not_found", "query" -> query,
+      "message" -> "No System` symbols match '" <> query <> "'"|>]
+  ];
+
+  <|"status" -> "ambiguous", "query" -> query,
+    "candidates" -> Map[SymbolCandidate, Take[candidates, UpTo[20]]]
+  |>
+];
+
 ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
   requestId = Lookup[request, "requestId", None];
   If[!StringQ[requestId] || StringLength[requestId] == 0, Return[PostFailure["unknown", "BAD_REQUEST", "Request missing valid requestId."]]];
@@ -1505,6 +1562,7 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
           "mma_get_cell_output", GetCellOutputById[args],
           "mma_save_notebook", SaveNotebookRequest[args],
           "mma_select_notebook", SelectNotebookRequest[args],
+          "mma_symbol_lookup", SymbolLookup[Lookup[args, "query", ""]],
           _, Failure["BAD_REQUEST", <|"Message" -> StringTemplate["Unknown tool ``."][tool]|>]
         ]
       ],

@@ -60,3 +60,7 @@ export const listCellsSchema = z.object({
 export const saveNotebookSchema = z.object({
   ...notebookSelectorFields
 }).strict();
+
+export const symbolLookupSchema = z.object({
+  query: z.string().min(1).describe("Symbol name or partial search term")
+}).strict();
