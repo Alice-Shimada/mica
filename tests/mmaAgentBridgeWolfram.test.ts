@@ -966,10 +966,9 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       'SymbolLookup[query_String] := Module',
       'SymbolDetail[sym_Symbol] := Module',
       'SymbolCandidate[sym_String] := Module',
-      'WolframLanguageData[name, {"PlaintextUsage", "Options", "RelatedSymbols", "URL"}]',
-      'SyntaxInformation[sym]',
-      'Attributes[sym]',
+      'sym::usage',
       'Options[sym]',
+      'Attributes[sym]',
       '"mma_symbol_lookup"',
       'SymbolLookup[Lookup[args, "query", ""]]',
       '"status" -> "found"',
@@ -979,7 +978,6 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       '"System`" <> query',
       'Length[Names[exactName]] === 1',
       'ToExpression[exactName]',
-      'e_Entity :> e[[2]]',
     ];
 
     for (const snippet of requiredSnippets) {

@@ -1482,17 +1482,14 @@ StartMMAAgentHiddenAgent[] := Module[{},
   $HiddenAgentTask
 ];
 
-SymbolDetail[sym_Symbol] := Module[{name = SymbolName[sym], data},
-  data = Quiet @ WolframLanguageData[name, {"PlaintextUsage", "Options", "RelatedSymbols", "URL"}];
+SymbolDetail[sym_Symbol] := Module[{name = SymbolName[sym]},
   <|
     "status" -> "found",
     "symbol" -> name,
-    "usage" -> Replace[data[[1]], Except[_String] -> Quiet @ ToString[sym::usage]],
-    "options" -> Replace[data[[2]], Except[_List] -> Quiet @ Options[sym]],
+    "usage" -> Quiet @ ToString[sym::usage],
+    "options" -> Quiet @ Map[<|"name" -> ToString[#[[1]]], "default" -> ToString[#[[2]]]|> &, Options[sym]],
     "attributes" -> ToString /@ Attributes[sym],
-    "syntax" -> Quiet @ SyntaxInformation[sym],
-    "related" -> Replace[data[[3]], {Except[_List] -> {}, l_List :> ToString /@ (l /. e_Entity :> e[[2]])}],
-    "url" -> Replace[data[[4]], {_URL :> ToString[data[[4]]], _ -> ""}]
+    "url" -> "https://reference.wolfram.com/language/ref/" <> name <> ".html"
   |>
 ];
 

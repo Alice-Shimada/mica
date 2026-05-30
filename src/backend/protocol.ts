@@ -8,7 +8,7 @@ export const DEFAULT_TIMEOUTS_MS = {
   mutation: 10_000,
   insertCell: 60_000,
   runCell: 120_000,
-  symbolLookup: 15_000,
+  symbolLookup: 30_000,
   agentHeartbeatGrace: 3000,
   staleTransition: 10_000
 } as const;
