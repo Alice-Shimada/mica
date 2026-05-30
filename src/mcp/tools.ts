@@ -12,7 +12,8 @@ import {
   readCellSchema,
   selectNotebookSchema,
   saveNotebookSchema,
-  runCellSchema
+  runCellSchema,
+  symbolLookupSchema
 } from "./toolSchemas.js";
 
 /**
@@ -261,5 +262,13 @@ export function registerMmaTools(
         extra as ToolHandlerExtra
       );
     }
+  );
+
+  server.tool(
+    "mma_symbol_lookup",
+    notebookToolDescription("Look up Wolfram Language symbol documentation. Provide an exact symbol name (e.g. 'Plot') for full details including usage, options, attributes, and documentation URL, or a partial name (e.g. 'integrate') for a list of matching symbols."),
+    symbolLookupSchema.shape,
+    async (args, extra) =>
+      enqueueWithCancellation(queue, getStatus, "mma_symbol_lookup", args as Record<string, unknown>, extra as ToolHandlerExtra)
   );
 }

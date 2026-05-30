@@ -151,6 +151,7 @@ describe("MCP tool bridge readiness", () => {
     expect(backendToolsSource).toContain('"mma_abort_evaluation"');
     expect(backendToolsSource).toContain('"mma_get_cell_output"');
     expect(backendToolsSource).toContain('"mma_save_notebook"');
+    expect(backendToolsSource).toContain('"mma_symbol_lookup"');
   });
 
   it("rejects displayName on the Node select path instead of falling back to active notebook", () => {

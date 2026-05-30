@@ -199,11 +199,10 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
   const queuedNotebookTools: QueuedNotebookTool[] = [
     {
       name: "mma_symbol_lookup",
-      summary: "Look up Wolfram Language symbol documentation. Provide an exact symbol name (e.g. 'Plot') for full details including usage, options, attributes, syntax, related symbols, and documentation URL, or a partial name (e.g. 'integrate') for a list of matching symbols.",
+      summary: "Look up Wolfram Language symbol documentation. Provide an exact symbol name (e.g. 'Plot') for full details including usage, options, attributes, and documentation URL, or a partial name (e.g. 'integrate') for a list of matching symbols.",
       schema: symbolLookupSchema.shape,
       permission: "ReadNotebook",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.symbolLookup,
-      extraGuidance: "",
     },
     {
       name: "mma_list_cells",

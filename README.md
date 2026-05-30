@@ -94,6 +94,7 @@ The bridge supports multiple open notebooks from one Palette.
 - If a tool call includes `notebookId`, that notebook is used.
 - If a tool call omits `notebookId`, the Palette-selected active notebook is used.
 - If no notebook is selected, the tool fails immediately instead of hanging.
+- `mma_symbol_lookup` queries Wolfram Language function documentation. Provide an exact symbol name (e.g. `"Plot"`) for full details including usage, options, attributes, and documentation URL, or a partial name (e.g. `"integrate"`) for a list of matching symbols.
 
 Permissions are global and shared across notebooks.
 
@@ -206,3 +207,4 @@ Live verification steps:
 3. Confirm insert, read, modify, run, get-output, delete, and abort all work against a live notebook.
 4. Run `node scripts/install.js --uninstall` and restart Wolfram Desktop.
 5. Confirm the marked block is removed from `Kernel/init.m` while unrelated content remains.
+6. Confirm `mma_symbol_lookup("Plot")` returns usage, options, attributes, and URL.

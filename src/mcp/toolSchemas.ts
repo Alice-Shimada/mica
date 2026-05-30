@@ -8,8 +8,6 @@ const notebookSelectorFields = {
   displayName: z.string().min(1).optional()
 };
 
-export const notebookTargetSchema = z.object(notebookSelectorFields).strict();
-
 export const selectNotebookSchema = z.object({
   notebookId: notebookIdField.optional(),
   displayName: z.string().min(1).optional()

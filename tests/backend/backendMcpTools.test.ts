@@ -250,6 +250,7 @@ describe("backend MCP tool registration", () => {
     const registrations = registerTools(state);
 
     const listResult = registrationByName(registrations, "mma_list_cells").handler({});
+    const symbolLookupResult = registrationByName(registrations, "mma_symbol_lookup").handler({ query: "Plot" });
     const readResult = registrationByName(registrations, "mma_read_cell").handler({ cellId: "cell-1" });
     const insertResult = registrationByName(registrations, "mma_insert_cell").handler({ content: "1+1", style: "Input" });
     const modifyResult = registrationByName(registrations, "mma_modify_cell").handler({ cellId: "cell-1", content: "2+2" });
@@ -260,7 +261,7 @@ describe("backend MCP tool registration", () => {
     const saveResult = registrationByName(registrations, "mma_save_notebook").handler({});
 
     const queued = state.queue.snapshot().queued;
-    expect(queued).toHaveLength(9);
+    expect(queued).toHaveLength(10);
     expect(queued[0]).toMatchObject({
       tool: "mma_list_cells",
       targetNotebookId: notebook.notebookId,
@@ -269,55 +270,62 @@ describe("backend MCP tool registration", () => {
       status: "queued",
     });
     expect(queued[1]).toMatchObject({
+      tool: "mma_symbol_lookup",
+      targetNotebookId: notebook.notebookId,
+      agentSessionId: "agent-1",
+      timeoutMs: 30_000,
+      arguments: expect.objectContaining({ query: "Plot" }),
+    });
+    expect(queued[2]).toMatchObject({
       tool: "mma_read_cell",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 10_000,
       arguments: expect.objectContaining({ cellId: "cell-1" }),
     });
-    expect(queued[2]).toMatchObject({
+    expect(queued[3]).toMatchObject({
       tool: "mma_insert_cell",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 60_000,
       arguments: expect.objectContaining({ content: "1+1", style: "Input" }),
     });
-    expect(queued[3]).toMatchObject({
+    expect(queued[4]).toMatchObject({
       tool: "mma_modify_cell",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 10_000,
       arguments: expect.objectContaining({ cellId: "cell-1", content: "2+2" }),
     });
-    expect(queued[4]).toMatchObject({
+    expect(queued[5]).toMatchObject({
       tool: "mma_delete_cell",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 10_000,
       arguments: expect.objectContaining({ cellId: "cell-1" }),
     });
-    expect(queued[5]).toMatchObject({
+    expect(queued[6]).toMatchObject({
       tool: "mma_run_cell",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 7_000,
       arguments: expect.objectContaining({ cellId: "cell-1", timeoutSec: 7 }),
     });
-    expect(queued[6]).toMatchObject({
+    expect(queued[7]).toMatchObject({
       tool: "mma_abort_evaluation",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 10_000,
       arguments: expect.objectContaining({}),
     });
-    expect(queued[7]).toMatchObject({
+    expect(queued[8]).toMatchObject({
       tool: "mma_get_cell_output",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
       timeoutMs: 10_000,
       arguments: expect.objectContaining({ cellId: "cell-1" }),
     });
-    expect(queued[8]).toMatchObject({
+    expect(queued[9]).toMatchObject({
       tool: "mma_save_notebook",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
@@ -332,6 +340,9 @@ describe("backend MCP tool registration", () => {
 
     await expect(listResult).resolves.toMatchObject({
       structuredContent: expect.objectContaining({ tool: "mma_list_cells" }),
+    });
+    await expect(symbolLookupResult).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ tool: "mma_symbol_lookup" }),
     });
     await expect(readResult).resolves.toMatchObject({
       structuredContent: expect.objectContaining({ tool: "mma_read_cell" }),
@@ -358,7 +369,7 @@ describe("backend MCP tool registration", () => {
       structuredContent: expect.objectContaining({ tool: "mma_save_notebook" }),
     });
 
-    expect(resultByTool.size).toBe(9);
+    expect(resultByTool.size).toBe(10);
   });
 
   it("awaits hidden-agent results and returns the result object directly", async () => {
@@ -481,6 +492,7 @@ describe("backend MCP tool registration", () => {
   it("does not enqueue when notebook permissions deny the tool", async () => {
     const deniedCases = [
       { tool: "mma_list_cells", args: {}, permission: "ReadNotebook" as const },
+      { tool: "mma_symbol_lookup", args: { query: "Plot" }, permission: "ReadNotebook" as const },
       { tool: "mma_read_cell", args: { cellId: "cell-1" }, permission: "ReadNotebook" as const },
       { tool: "mma_insert_cell", args: { content: "1+1" }, permission: "InsertCell" as const },
       { tool: "mma_modify_cell", args: { cellId: "cell-1", content: "2+2" }, permission: "ModifyCell" as const },
