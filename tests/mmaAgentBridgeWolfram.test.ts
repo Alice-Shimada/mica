@@ -964,16 +964,12 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
   it("defines symbol lookup helpers for agent-friendly documentation queries", () => {
     const requiredSnippets = [
       'SymbolLookup[query_String] := Module',
-      'SymbolDetail[sym_Symbol] :=',
+      'SymbolDetail[sym_Symbol] := Module',
       'SymbolCandidate[sym_String] := Module',
-      'usageString[sym_Symbol] := Quiet @ Check[ToString[sym::usage]',
-      'optionList[sym_Symbol] := Quiet @ Check[Map[<|"name" -> ToString[#[[1]]], "default" -> ToString[#[[2]]]|> &, Options[sym]]',
-      'syntaxSummary[sym_Symbol] := Quiet @ Check[',
-      'Replace[WolframLanguageData[SymbolName[sym], "SyntaxInformation"], _Missing -> <||>]',
-      'relatedSymbols[sym_Symbol] := Quiet @ Check[',
-      'ToString /@ (WolframLanguageData[SymbolName[sym], "RelatedSymbols"] /. e_Entity :> e[[2]])',
-      '_Missing -> {}',
-      'documentationURL[sym_Symbol] := Quiet @ Check["https://reference.wolfram.com/language/ref/" <> SymbolName[sym] <> ".html"',
+      'WolframLanguageData[name, {"PlaintextUsage", "Options", "RelatedSymbols", "URL"}]',
+      'SyntaxInformation[sym]',
+      'Attributes[sym]',
+      'Options[sym]',
       '"mma_symbol_lookup"',
       'SymbolLookup[Lookup[args, "query", ""]]',
       '"status" -> "found"',
@@ -983,7 +979,7 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       '"System`" <> query',
       'Length[Names[exactName]] === 1',
       'ToExpression[exactName]',
-      'WolframLanguageData[SymbolName[sym], "RelatedSymbols"] /. e_Entity :> e[[2]]',
+      'e_Entity :> e[[2]]',
     ];
 
     for (const snippet of requiredSnippets) {
