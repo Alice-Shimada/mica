@@ -53,7 +53,7 @@ export function parseArgs(argv) {
 }
 
 export function helpText() {
-  return `Usage: node scripts/install.mjs [options]
+  return `Usage: node scripts/install.js [options]
 
 Options:
   --dry-run                    Preview init.m changes without writing files
@@ -475,7 +475,7 @@ export function runInstaller(argv = process.argv.slice(2)) {
     lines.push("  npm test");
     lines.push("  npm run typecheck");
     lines.push("  npm run build");
-    lines.push("  node scripts/install.mjs --dry-run");
+    lines.push("  node scripts/install.js --dry-run");
   }
 
   return `${lines.join("\n")}\n`;

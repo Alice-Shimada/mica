@@ -32,7 +32,7 @@ Bun now owns MCP orchestration, the notebook registry, request timeouts, stale c
 - Configure Wolfram Desktop autoload from this checkout:
 
 ```powershell
-node scripts/install.mjs
+node scripts/install.js
 ```
 
 The installer edits only the per-user `<Wolfram user base>\Kernel\init.m`, creates a timestamped backup, and prints MCP snippets instead of editing MCP client config. It does **not** edit `FrontEnd/init.m`, does **not** edit system-level Wolfram files, and does **not** edit MCP client configs. Headless Wolfram Engine is not supported for live notebook control. Restart Wolfram Desktop after install or uninstall.
@@ -40,8 +40,8 @@ The installer edits only the per-user `<Wolfram user base>\Kernel\init.m`, creat
 Dry-run and uninstall:
 
 ```powershell
-node scripts/install.mjs --dry-run
-node scripts/install.mjs --uninstall
+node scripts/install.js --dry-run
+node scripts/install.js --uninstall
 ```
 
 `StartMMAAgentControlKernel[]` creates or reuses a FrontEnd evaluator named `MMAAgentControl`, starts the hidden agent from an invisible control notebook bound to that evaluator, and leaves normal notebooks on their existing evaluator. This keeps bridge polling and abort requests responsive when a user notebook's `Local` kernel is busy.
@@ -50,7 +50,7 @@ Notebook names are mutable. Saving a notebook updates its `displayName` and path
 
 ## Workflow
 
-1. Run `node scripts/install.mjs` once for this checkout, then fully restart Wolfram Desktop so the control-kernel hidden agent autoloads. If Wolfram Desktop was already open before installation, new notebooks can reuse an old kernel that has not read the updated `Kernel/init.m`; quit and reopen Desktop, or use the manual startup fallback below.
+1. Run `node scripts/install.js` once for this checkout, then fully restart Wolfram Desktop so the control-kernel hidden agent autoloads. If Wolfram Desktop was already open before installation, new notebooks can reuse an old kernel that has not read the updated `Kernel/init.m`; quit and reopen Desktop, or use the manual startup fallback below.
 2. Start the Bun runtime with `npm run dev:bun` or point your MCP client at `npm run dev:bun:mcp`.
 3. Open the dashboard at `http://127.0.0.1:19791/` to watch notebook registration, live status, queueing, and request results.
 4. Use MCP tools against the Bun server; live notebook operations are executed by the hidden Wolfram FrontEnd agent.
@@ -196,13 +196,13 @@ Recommended local verification:
 npm test
 npm run typecheck
 npm run build
-node scripts/install.mjs --dry-run
+node scripts/install.js --dry-run
 ```
 
 Live verification steps:
 
-1. Run `node scripts/install.mjs` and restart Wolfram Desktop.
+1. Run `node scripts/install.js` and restart Wolfram Desktop.
 2. Confirm `mma_status` reports an online agent and a registered notebook.
 3. Confirm insert, read, modify, run, get-output, delete, and abort all work against a live notebook.
-4. Run `node scripts/install.mjs --uninstall` and restart Wolfram Desktop.
+4. Run `node scripts/install.js --uninstall` and restart Wolfram Desktop.
 5. Confirm the marked block is removed from `Kernel/init.m` while unrelated content remains.

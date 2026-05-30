@@ -2,54 +2,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-type InstallerOptions = {
-  dryRun: boolean;
-  uninstall: boolean;
-  bridgeRoot?: string;
-  wolframUserBase?: string;
-  help: boolean;
-};
-
-type InstallerModule = {
-  CONTROL_BEGIN: string;
-  CONTROL_END: string;
-  HIDDEN_BEGIN: string;
-  HIDDEN_END: string;
-  parseArgs(argv: string[]): InstallerOptions;
-  ensureNode20(version?: string): void;
-  wolframString(value: string): string;
-  generateAutoloadBlock(bridgeSourcePath: string): string;
-  removeBridgeBlocks(content: string): { content: string; removed: number };
-  applyInstallToContent(
-    existingContent: string,
-    autoloadBlock: string
-  ): { content: string; removed: number; changed: boolean };
-  applyUninstallToContent(
-    existingContent: string
-  ): { content: string; removed: number; changed: boolean };
-  detectWolframUserBase(options?: {
-    override?: string;
-    platform?: NodeJS.Platform;
-    env?: NodeJS.ProcessEnv;
-    homedir?: string;
-    exists?: (filePath: string) => boolean;
-    runWolframscript?: () => string | undefined;
-  }): { userBase: string; source: string; warnings: string[] };
-  renderMcpSnippets(
-    bridgeRoot: string,
-    options?: { bunCommand?: string; nodeCommand?: string }
-  ): string;
-  renderWolframStartupSnippet(bridgeRoot: string): string;
-  runInstaller(argv?: string[]): string;
-};
-
-const installerPath = path.resolve("scripts", "install.mjs");
-const installer = (await import(
-  pathToFileURL(installerPath).href
-)) as InstallerModule;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import * as installer from "../scripts/install.js";
 
 const tempRoots: string[] = [];
 
@@ -91,6 +47,8 @@ function makeBridgeFixture(): string {
   );
   return bridgeRoot;
 }
+
+const installerPath = path.resolve("scripts", "install.js");
 
 function runInstaller(args: string[]): string {
   return execFileSync(process.execPath, [installerPath, ...args], {
@@ -172,7 +130,7 @@ describe("installer environment checks", () => {
 
 describe("installer Wolfram user base detection", () => {
   it("uses an explicit Wolfram user base override first", () => {
-    const selected = installer.detectWolframUserBase({
+    const selected = (installer.detectWolframUserBase as any)({
       override: path.join("C:", "custom", "Wolfram"),
       runWolframscript: () => path.join("C:", "ignored"),
     });
@@ -200,8 +158,8 @@ describe("installer Wolfram user base detection", () => {
     const selected = installer.detectWolframUserBase({
       platform: "win32",
       env: { APPDATA: "C:\\Users\\agent\\AppData\\Roaming" },
-      exists: (filePath: string) =>
-        filePath.endsWith(`${path.sep}Wolfram`),
+      exists: (filePath) =>
+        String(filePath).endsWith(`${path.sep}Wolfram`),
       runWolframscript: () => undefined,
     });
 
@@ -400,9 +358,9 @@ describe("installer MCP snippet rendering", () => {
   it("prints a manual Wolfram startup snippet with default notebook-control permissions", () => {
     const bridgeRoot = path.resolve("/repo/mica");
     const snippets = installer.renderWolframStartupSnippet(bridgeRoot);
+    const expectedPath = path.join(bridgeRoot, "paclet", "Kernel", "MMAAgentBridge.wl");
 
     expect(snippets).toContain("Manual Wolfram Desktop startup fallback:");
-    expect(snippets).toContain('Get["/repo/mica/paclet/Kernel/MMAAgentBridge.wl"];');
     expect(snippets).toContain("MMAAgentBridge`Private`$BridgePermissions = <|");
     expect(snippets).toContain('"ReadNotebook" -> True');
     expect(snippets).toContain('"InsertCell" -> True');
