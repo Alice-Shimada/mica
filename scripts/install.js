@@ -13,6 +13,10 @@ export const CONTROL_BEGIN =
   "(* BEGIN MICA control-kernel autoload *)";
 export const CONTROL_END =
   "(* END MICA control-kernel autoload *)";
+const OLD_HIDDEN_BEGIN = "(* BEGIN MMA MCP Bridge hidden-agent autoload *)";
+const OLD_HIDDEN_END = "(* END MMA MCP Bridge hidden-agent autoload *)";
+const OLD_CONTROL_BEGIN = "(* BEGIN MMA MCP Bridge control-kernel autoload *)";
+const OLD_CONTROL_END = "(* END MMA MCP Bridge control-kernel autoload *)";
 export const STANDARD_INIT_HEADER =
   "(* User Wolfram Kernel/init.m. MICA preserves user content outside marked blocks. *)\n";
 
@@ -225,14 +229,24 @@ export function removeBridgeBlocks(content) {
     HIDDEN_BEGIN,
     HIDDEN_END
   );
-  const withoutControl = removeOneBlockPair(
+  const withoutOldHidden = removeOneBlockPair(
     withoutHidden.content,
+    OLD_HIDDEN_BEGIN,
+    OLD_HIDDEN_END
+  );
+  const withoutControl = removeOneBlockPair(
+    withoutOldHidden.content,
     CONTROL_BEGIN,
     CONTROL_END
   );
+  const withoutOldControl = removeOneBlockPair(
+    withoutControl.content,
+    OLD_CONTROL_BEGIN,
+    OLD_CONTROL_END
+  );
   return {
-    content: withoutControl.content.replace(/(?:\r?\n){3,}/g, "\n\n"),
-    removed: withoutHidden.removed + withoutControl.removed,
+    content: withoutOldControl.content.replace(/(?:\r?\n){3,}/g, "\n\n"),
+    removed: withoutHidden.removed + withoutOldHidden.removed + withoutControl.removed + withoutOldControl.removed,
   };
 }
 

@@ -261,6 +261,21 @@ describe("installer Wolfram init block generation", () => {
     expect(result.content).not.toContain("old control");
   });
 
+  it("removes legacy MMA MCP Bridge markers for backward compatibility", () => {
+    const oldHidden = "(* BEGIN MMA MCP Bridge hidden-agent autoload *)\nold hidden\n(* END MMA MCP Bridge hidden-agent autoload *)\n";
+    const oldControl = "(* BEGIN MMA MCP Bridge control-kernel autoload *)\nold control\n(* END MMA MCP Bridge control-kernel autoload *)\n";
+    const input = `Print["before"]\n${oldHidden}Print["middle"]\n${oldControl}Print["after"]\n`;
+
+    const result = installer.removeBridgeBlocks(input);
+
+    expect(result.removed).toBe(2);
+    expect(result.content).toContain('Print["before"]');
+    expect(result.content).toContain('Print["middle"]');
+    expect(result.content).toContain('Print["after"]');
+    expect(result.content).not.toContain("old hidden");
+    expect(result.content).not.toContain("old control");
+  });
+
   it("makes repeated install content idempotent", () => {
     const block = installer.generateAutoloadBlock(
       "/Users/agent/repo/paclet/Kernel/MMAAgentBridge.wl"
