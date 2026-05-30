@@ -1,0 +1,281 @@
+import { describe, expect, it } from "vitest";
+import { BackendState } from "../../src/backend/backendState.js";
+
+const permissions = {
+  ReadNotebook: true,
+  InsertCell: true,
+  ModifyCell: true,
+  DeleteCell: true,
+  RunCell: true,
+  SaveNotebook: true,
+};
+
+function heartbeat(overrides: Record<string, unknown> = {}) {
+  return {
+    agentSessionId: "agent-1",
+    frontendObjectKey: "fe-1",
+    displayName: "未命名-2",
+    windowTitle: "未命名-2",
+    wolframVersion: "13.3",
+    platform: "Windows",
+    permissions,
+    seenAt: 1000,
+    ...overrides,
+  } as const;
+}
+
+describe("BackendState", () => {
+  it("resolves live notebooks by notebookId and displayName", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const record = state.notebooks.upsertHeartbeat(heartbeat());
+    const resolved = state.resolveNotebook({ notebookId: record.notebookId });
+
+    expect(resolved).toEqual({ ok: true, record });
+    if (resolved.ok) resolved.record.displayName = "mutated";
+    expect(state.resolveNotebook({ notebookId: record.notebookId })).toEqual({ ok: true, record });
+    expect(state.resolveNotebook({ displayName: "未命名-2" })).toEqual({ ok: true, record });
+  });
+
+  it("reports notebook lifecycle resolution errors", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const live = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1" }));
+    const closed = state.notebooks.upsertHeartbeat(
+      heartbeat({
+        agentSessionId: "agent-2",
+        frontendObjectKey: "fe-2",
+        displayName: "foo.nb",
+        windowTitle: "foo.nb",
+        notebookPath: "C:/tmp/foo.nb",
+        savedPath: "C:/tmp/foo.nb",
+        seenAt: 2000,
+      }),
+    );
+    const stale = state.notebooks.upsertHeartbeat(
+      heartbeat({
+        agentSessionId: "agent-3",
+        frontendObjectKey: "fe-3",
+        displayName: "bar.nb",
+        windowTitle: "bar.nb",
+        notebookPath: "C:/tmp/bar.nb",
+        savedPath: "C:/tmp/bar.nb",
+        seenAt: 3000,
+      }),
+    );
+
+    state.notebooks.markClosed(closed.notebookId, 4000);
+    state.notebooks.markStaleByAgent("agent-3", 5000);
+
+    expect(state.resolveNotebook({ notebookId: "missing" })).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    expect(state.resolveNotebook({ notebookId: closed.notebookId })).toEqual({ ok: false, error: "NOTEBOOK_CLOSED" });
+    expect(state.resolveNotebook({ notebookId: stale.notebookId })).toEqual({ ok: false, error: "NOTEBOOK_STALE" });
+    expect(state.resolveNotebook({ notebookId: live.notebookId })).toEqual({ ok: true, record: live });
+  });
+
+  it("returns ambiguous display-name candidates when more than one live notebook matches", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const first = state.notebooks.upsertHeartbeat(
+      heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", displayName: "未命名-2", windowTitle: "未命名-2" }),
+    );
+    const second = state.notebooks.upsertHeartbeat(
+      heartbeat({ agentSessionId: "agent-2", frontendObjectKey: "fe-2", displayName: "未命名-2", windowTitle: "未命名-2" }),
+    );
+
+    expect(state.resolveNotebook({ displayName: "未命名-2" })).toEqual({
+      ok: false,
+      error: "AMBIGUOUS_NOTEBOOK_NAME",
+      candidates: [first, second],
+    });
+  });
+
+  it("falls back to the active notebook when no selector is given", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const record = state.notebooks.upsertHeartbeat(heartbeat());
+    state.activeNotebookId = record.notebookId;
+
+    expect(state.resolveNotebook({})).toEqual({ ok: true, record });
+  });
+
+  it("clears the active notebook when that notebook closes", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const record = state.notebooks.upsertHeartbeat(heartbeat());
+    state.activeNotebookId = record.notebookId;
+
+    state.closeNotebook(record.notebookId, 2000);
+
+    expect(state.activeNotebookId).toBeUndefined();
+    expect(state.resolveNotebook({})).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+  });
+
+  it("does not fall back to the active notebook for explicit empty or whitespace selectors", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const active = state.notebooks.upsertHeartbeat(
+      heartbeat({ agentSessionId: "agent-active", frontendObjectKey: "fe-active", displayName: "active.nb", windowTitle: "active.nb" }),
+    );
+    state.agents.register({ agentSessionId: "agent-active", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    state.activeNotebookId = active.notebookId;
+
+    expect(state.resolveNotebook({ notebookId: "" })).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    expect(state.resolveNotebook({ notebookId: "   " })).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    expect(state.resolveNotebook({ displayName: "" })).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    expect(state.resolveNotebook({ displayName: "   " })).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    expect(state.resolveNotebook({})).toEqual({ ok: true, record: active });
+  });
+
+  it("resolves missing, closed, and stale active notebook ids through the fallback path", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const live = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1" }));
+    const closed = state.notebooks.upsertHeartbeat(
+      heartbeat({
+        agentSessionId: "agent-2",
+        frontendObjectKey: "fe-2",
+        displayName: "foo.nb",
+        windowTitle: "foo.nb",
+        notebookPath: "C:/tmp/foo.nb",
+        savedPath: "C:/tmp/foo.nb",
+        seenAt: 2000,
+      }),
+    );
+    const stale = state.notebooks.upsertHeartbeat(
+      heartbeat({
+        agentSessionId: "agent-3",
+        frontendObjectKey: "fe-3",
+        displayName: "bar.nb",
+        windowTitle: "bar.nb",
+        notebookPath: "C:/tmp/bar.nb",
+        savedPath: "C:/tmp/bar.nb",
+        seenAt: 3000,
+      }),
+    );
+
+    state.notebooks.markClosed(closed.notebookId, 4000);
+    state.notebooks.markStaleByAgent("agent-3", 5000);
+
+    state.activeNotebookId = "missing";
+    expect(state.resolveNotebook({})).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+
+    state.activeNotebookId = closed.notebookId;
+    expect(state.resolveNotebook({})).toEqual({ ok: false, error: "NOTEBOOK_CLOSED" });
+
+    state.activeNotebookId = stale.notebookId;
+    expect(state.resolveNotebook({})).toEqual({ ok: false, error: "NOTEBOOK_STALE" });
+
+    state.activeNotebookId = live.notebookId;
+    expect(state.resolveNotebook({})).toEqual({ ok: true, record: live });
+  });
+
+  it("requires a live agent before backend work can proceed", () => {
+    const state = new BackendState(() => "notebook-1");
+
+    expect(state.requireLiveAgent()).toEqual({ ok: false, error: "NO_LIVE_AGENT" });
+    state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    expect(state.requireLiveAgent()).toEqual({ ok: true });
+  });
+
+  it("retires older live agents and hides their notebooks when a new agent registers", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-old", frontendObjectKey: "fe-old", displayName: "old.nb", windowTitle: "old.nb" }));
+
+    state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
+
+    expect(state.agents.get("agent-old")?.offline).toBe(true);
+    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
+    expect(state.notebooks.listLive()).toEqual([]);
+  });
+
+  it("does not let a superseded agent re-register and stale the current agent notebooks", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    const oldNotebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-old", frontendObjectKey: "fe-old", displayName: "old.nb", windowTitle: "old.nb" }));
+    state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
+    const newNotebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-new", frontendObjectKey: "fe-new", displayName: "new.nb", windowTitle: "new.nb", seenAt: 2000 }));
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 3000 });
+
+    expect(state.agents.get("agent-old")?.offline).toBe(true);
+    expect(state.agents.get("agent-old")?.retiredReason).toBe("superseded");
+    expect(state.agents.get("agent-new")?.offline).toBe(false);
+    expect(state.notebooks.get(oldNotebook.notebookId)?.stale).toBe(true);
+    expect(state.notebooks.get(newNotebook.notebookId)?.stale).toBe(false);
+    expect(state.notebooks.listLive()).toEqual([newNotebook]);
+  });
+
+  it("does not revive a retired agent via heartbeat", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    const staleNotebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-old", frontendObjectKey: "fe-old", displayName: "old.nb", windowTitle: "old.nb" }));
+    state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
+
+    expect(state.agents.heartbeat("agent-old", 3000)).toBeUndefined();
+    expect(state.agents.get("agent-old")?.offline).toBe(true);
+    expect(state.notebooks.get(staleNotebook.notebookId)?.stale).toBe(true);
+    expect(state.notebooks.listLive()).toEqual([]);
+  });
+
+  it("does not revive an offline agent via heartbeat after a new registration retires it", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    state.agents.markOfflineOlderThan(5000, 1000);
+    state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 6000 });
+
+    expect(state.agents.heartbeat("agent-old", 7000)).toBeUndefined();
+    expect(state.agents.get("agent-old")?.retired).toBe(true);
+    expect(state.agents.get("agent-old")?.offline).toBe(true);
+  });
+
+  it("revives an offline but not retired agent on heartbeat and accepts notebook heartbeats after revival", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", displayName: "foo.nb", windowTitle: "foo.nb", notebookPath: "C:/tmp/foo.nb", savedPath: "C:/tmp/foo.nb" }));
+    state.sweepLiveness(5000);
+
+    expect(state.agents.get("agent-1")?.offline).toBe(true);
+    expect(state.agents.heartbeat("agent-1", 6000)).toBeTruthy();
+
+    const revivedNotebook = state.notebooks.upsertHeartbeat(heartbeat({
+      agentSessionId: "agent-1",
+      frontendObjectKey: "fe-2",
+      displayName: "foo.nb",
+      windowTitle: "foo.nb",
+      notebookPath: "C:/tmp/foo.nb",
+      savedPath: "C:/tmp/foo.nb",
+      seenAt: 7000,
+    }));
+
+    expect(revivedNotebook.notebookId).toBe(notebook.notebookId);
+    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(false);
+    expect(state.notebooks.listLive()).toHaveLength(1);
+  });
+
+  it("ages out dead agents and stales their notebooks through a state sweep", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+    state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-old", frontendObjectKey: "fe-old", displayName: "old.nb", windowTitle: "old.nb", seenAt: 1000 }));
+
+    expect(state.sweepLiveness(1000 + 2999)).toEqual({ offlineAgents: [], staleNotebooks: [] });
+    expect(state.agents.get("agent-old")?.offline).toBe(false);
+
+    expect(state.sweepLiveness(1000 + 3000)).toEqual({ offlineAgents: ["agent-old"], staleNotebooks: [notebook.notebookId] });
+    expect(state.agents.get("agent-old")?.offline).toBe(true);
+    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
+  });
+});

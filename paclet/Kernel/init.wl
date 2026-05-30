@@ -1,0 +1,1 @@
+Get[FileNameJoin[{DirectoryName[$InputFileName], "MMAAgentBridge.wl"}]];

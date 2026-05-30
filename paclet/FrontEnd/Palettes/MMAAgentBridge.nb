@@ -1,0 +1,22 @@
+Notebook[
+ {
+  Cell[
+   BoxData[
+    ButtonBox[
+     "Open MMA Agent Bridge",
+     ButtonFunction :> (
+       Needs["MMAAgentBridge`"];
+       MMAAgentBridge`StartMMAAgentPalette[]
+     ),
+     Evaluator -> Automatic,
+     Method -> "Queued"
+    ]
+   ],
+   "Input"
+  ]
+ },
+ WindowTitle -> "MMA Agent Bridge Launcher",
+ Saveable -> False,
+ FrontEndVersion -> "13.0 for Microsoft Windows (64-bit) (June 19, 2021)",
+ StyleDefinitions -> "Default.nb"
+]
