@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { HttpBridge } from "./bridge/httpBridge.js";
 import { RequestQueue } from "./bridge/requestQueue.js";
+import { createMicaMcpServer, registerMicaPrompts } from "./mcp/prompts.js";
 import { registerMmaTools } from "./mcp/tools.js";
 import { runtimeModeFromArgs } from "./runtimeOptions.js";
 
@@ -12,12 +12,10 @@ async function main(): Promise<void> {
   const mode = runtimeModeFromArgs(process.argv.slice(2));
   await bridge.start();
 
-  const server = new McpServer({
-    name: "mica",
-    version: "0.1.0"
-  });
+  const server = createMicaMcpServer("mica");
 
   registerMmaTools(server, queue, () => bridge.statusSnapshot());
+  registerMicaPrompts(server);
 
   let shuttingDown = false;
 

@@ -16,28 +16,12 @@ import {
   saveNotebookSchema,
   symbolLookupSchema,
 } from "./toolSchemas.js";
+import { INSERT_ANCHOR_GUIDANCE, notebookToolDescription } from "./descriptions.js";
+import { toolSuccess, withToolErrors } from "./toolResults.js";
 
 type ToolHandlerExtra = {
   signal?: AbortSignal;
 };
-
-const NOTEBOOK_WORKFLOW_GUIDANCE =
-  "Start by calling mma_status or mma_list_notebooks. Use the latest notebookId because notebookIds change across sessions/restarts. Restart opencode or the mma MCP server after changing this MCP server code or tool descriptions.";
-const LIVE_NOTEBOOK_DEBUG_GUIDANCE =
-  "Debug live notebooks only through MCP notebook cells: insert cells, run cells, and read output/messages. Do not use detached wolframscript for live-notebook debugging or mutation.";
-const INSERT_ANCHOR_GUIDANCE = 'For append or unknown anchors, use afterCellId="__end__"; empty notebooks are supported.';
-
-function notebookToolDescription(summary: string, extraGuidance?: string): string {
-  return [summary, NOTEBOOK_WORKFLOW_GUIDANCE, extraGuidance, LIVE_NOTEBOOK_DEBUG_GUIDANCE].filter(Boolean).join(" ");
-}
-
-function toolResult(value: unknown) {
-  const structuredContent = value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : { result: value };
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify(structuredContent, null, 2) }],
-    structuredContent,
-  };
-}
 
 export type BackendToolTarget = {
   agentSessionId: string;
@@ -93,12 +77,12 @@ export function resolveToolTarget(state: BackendState, args: Record<string, unkn
 
 function queueNotebookOperation(
   state: BackendState,
+  target: BackendToolTarget,
   tool: string,
   args: Record<string, unknown>,
   timeoutMs: number,
   extra?: ToolHandlerExtra,
 ) {
-  const { agentSessionId, notebook } = resolveToolTarget(state, args);
   const requestId = randomUUID();
   const createdAt = Date.now();
 
@@ -106,8 +90,8 @@ function queueNotebookOperation(
     requestId,
     tool,
     arguments: args,
-    targetNotebookId: notebook.notebookId,
-    agentSessionId,
+    targetNotebookId: target.notebook.notebookId,
+    agentSessionId: target.agentSessionId,
     timeoutMs,
     createdAt,
   });
@@ -128,7 +112,7 @@ function queueNotebookOperation(
 
   return state.queue
     .waitForResult(requestId)
-    .then((result) => toolResult(result))
+    .then((result) => toolSuccess(result))
     .finally(() => {
       clearTimeout(timeoutHandle);
       extra?.signal?.removeEventListener("abort", abortHandler);
@@ -157,21 +141,25 @@ function registerQueuedNotebookTool(server: McpServer, state: BackendState, conf
     config.schema,
     async (args, extra) => {
       const recordArgs = args as Record<string, unknown>;
-      const target = resolveToolTarget(state, recordArgs);
-      ensurePermission(target.notebook, config.name, config.permission);
-      return queueNotebookOperation(state, config.name, recordArgs, config.timeoutMs(recordArgs), extra as ToolHandlerExtra);
+      return withToolErrors({ tool: config.name, args: recordArgs }, async () => {
+        const target = resolveToolTarget(state, recordArgs);
+        ensurePermission(target.notebook, config.name, config.permission);
+        return queueNotebookOperation(state, target, config.name, recordArgs, config.timeoutMs(recordArgs), extra as ToolHandlerExtra);
+      });
     }
   );
 }
 
 export function registerBackendMcpTools(server: McpServer, state: BackendState): void {
   server.tool("mma_status", notebookToolDescription("Report backend status and notebook registry state."), noArgsSchema.shape, async () => {
-    sweepStateLiveness(state);
-    return toolResult({
-      server: "running",
-      activeNotebookId: liveActiveNotebookId(state),
-      notebooks: state.notebooks.listLive(),
-      agents: liveAgents(state),
+    return withToolErrors({ tool: "mma_status" }, () => {
+      sweepStateLiveness(state);
+      return toolSuccess({
+        server: "running",
+        activeNotebookId: liveActiveNotebookId(state),
+        notebooks: state.notebooks.listLive(),
+        agents: liveAgents(state),
+      });
     });
   });
 
@@ -180,8 +168,10 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
     notebookToolDescription("List notebooks registered with the Mathematica bridge Palette."),
     noArgsSchema.shape,
     async () => {
-      sweepStateLiveness(state);
-      return toolResult({ notebooks: state.notebooks.listLive(), activeNotebookId: liveActiveNotebookId(state) });
+      return withToolErrors({ tool: "mma_list_notebooks" }, () => {
+        sweepStateLiveness(state);
+        return toolSuccess({ notebooks: state.notebooks.listLive(), activeNotebookId: liveActiveNotebookId(state) });
+      });
     }
   );
 
@@ -190,9 +180,12 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
     notebookToolDescription("Select the active Mathematica notebook in the backend registry."),
     selectNotebookSchema.shape,
     async (args) => {
-      const target = resolveToolTarget(state, args as Record<string, unknown>);
-      state.activeNotebookId = target.notebook.notebookId;
-      return toolResult({ ok: true, activeNotebookId: state.activeNotebookId, notebook: target.notebook });
+      const recordArgs = args as Record<string, unknown>;
+      return withToolErrors({ tool: "mma_select_notebook", args: recordArgs }, () => {
+        const target = resolveToolTarget(state, recordArgs);
+        state.activeNotebookId = target.notebook.notebookId;
+        return toolSuccess({ activeNotebookId: state.activeNotebookId, notebook: target.notebook });
+      });
     }
   );
 

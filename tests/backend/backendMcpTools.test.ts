@@ -198,13 +198,14 @@ describe("backend MCP tool registration", () => {
 
     expect(status).toMatchObject({
       structuredContent: expect.objectContaining({
+        ok: true,
         server: "running",
         activeNotebookId: null,
       }),
       content: [expect.objectContaining({ type: "text", text: expect.stringContaining('"server": "running"') })],
     });
     expect(list).toMatchObject({
-      structuredContent: expect.objectContaining({ notebooks: expect.any(Array) }),
+      structuredContent: expect.objectContaining({ ok: true, notebooks: expect.any(Array) }),
     });
     expect(select).toMatchObject({
       structuredContent: expect.objectContaining({ ok: true, activeNotebookId: notebook.notebookId }),
@@ -385,7 +386,7 @@ describe("backend MCP tool registration", () => {
     state.queue.resolve(requestId, { cells: [{ id: "c1" }] }, 1_500);
 
     await expect(pending).resolves.toMatchObject({
-      structuredContent: { cells: [{ id: "c1" }] },
+      structuredContent: { ok: true, cells: [{ id: "c1" }] },
       content: [{ type: "text", text: expect.stringContaining('"cells"') }],
     });
   });
@@ -403,7 +404,7 @@ describe("backend MCP tool registration", () => {
     state.queue.resolve(requestId, "ok", 1_500);
 
     await expect(pending).resolves.toMatchObject({
-      structuredContent: { result: "ok" },
+      structuredContent: { ok: true, result: "ok" },
       content: [{ type: "text", text: expect.stringContaining('"result": "ok"') }],
     });
   });
@@ -417,7 +418,17 @@ describe("backend MCP tool registration", () => {
       const handler = registrationByName(registerTools(state), "mma_list_cells").handler;
 
       const pending = handler({});
-      const rejected = expect(pending).rejects.toThrow("REQUEST_TIMED_OUT");
+      const rejected = expect(pending).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({
+            code: "REQUEST_TIMED_OUT",
+            retryable: true,
+            tool: "mma_list_cells",
+          }),
+        },
+      });
       await vi.runOnlyPendingTimersAsync();
 
       await rejected;
@@ -452,7 +463,16 @@ describe("backend MCP tool registration", () => {
       expect(settled).toBe(false);
       expect(state.queue.snapshot().timed_out).toHaveLength(0);
 
-      const rejected = expect(pending).rejects.toThrow("REQUEST_TIMED_OUT");
+      const rejected = expect(pending).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({
+            code: "REQUEST_TIMED_OUT",
+            tool: "mma_insert_cell",
+          }),
+        },
+      });
       await vi.advanceTimersByTimeAsync(50_000);
 
       await rejected;
@@ -472,7 +492,17 @@ describe("backend MCP tool registration", () => {
     const pending = handler({}, { signal: controller.signal });
     controller.abort();
 
-    await expect(pending).rejects.toThrow("MCP client cancelled operation");
+    await expect(pending).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "REQUEST_CANCELLED",
+          message: "MCP client cancelled operation",
+          tool: "mma_list_cells",
+        }),
+      },
+    });
     expect(state.queue.snapshot().cancelled).toHaveLength(1);
     expect(state.queue.cancellationsForAgent("agent-1")).toEqual([{ requestId: expect.any(String), reason: "MCP client cancelled operation" }]);
   });
@@ -485,7 +515,16 @@ describe("backend MCP tool registration", () => {
     const controller = new AbortController();
     controller.abort();
 
-    await expect(handler({}, { signal: controller.signal })).rejects.toThrow("MCP client cancelled operation");
+    await expect(handler({}, { signal: controller.signal })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "REQUEST_CANCELLED",
+          tool: "mma_list_cells",
+        }),
+      },
+    });
     expect(state.queue.snapshot().cancelled).toHaveLength(1);
   });
 
@@ -517,7 +556,17 @@ describe("backend MCP tool registration", () => {
       state.activeNotebookId = notebook.notebookId;
       const handler = registrationByName(registerTools(state), denied.tool).handler;
 
-      await expect(handler(denied.args)).rejects.toThrow("PERMISSION_DENIED");
+      await expect(handler(denied.args)).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({
+            code: "PERMISSION_DENIED",
+            tool: denied.tool,
+            retryable: false,
+          }),
+        },
+      });
       expect(state.queue.snapshot().queued).toHaveLength(0);
     }
   });
@@ -581,7 +630,17 @@ describe("backend MCP tool registration", () => {
     state.agents.markOfflineOlderThan(now, 3_000);
     state.activeNotebookId = notebook.notebookId;
 
-    await expect(registrationByName(registerTools(state), "mma_list_cells").handler({})).rejects.toThrow("NO_LIVE_AGENT");
+    await expect(registrationByName(registerTools(state), "mma_list_cells").handler({})).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "NO_LIVE_AGENT",
+          tool: "mma_list_cells",
+          retryable: true,
+        }),
+      },
+    });
     expect(state.queue.snapshot().queued).toHaveLength(0);
   });
 
@@ -613,7 +672,16 @@ describe("backend MCP tool registration", () => {
 
       const pending = registrationByName(registerTools(state), "mma_list_cells").handler({});
       expect(state.queue.snapshot().queued).toHaveLength(0);
-      await expect(pending).rejects.toThrow(/NO_LIVE_AGENT|NOTEBOOK_STALE/);
+      await expect(pending).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({
+            code: expect.stringMatching(/NO_LIVE_AGENT|NOTEBOOK_STALE/),
+            tool: "mma_list_cells",
+          }),
+        },
+      });
       expect(state.queue.snapshot().queued).toHaveLength(0);
     } finally {
       vi.clearAllTimers();

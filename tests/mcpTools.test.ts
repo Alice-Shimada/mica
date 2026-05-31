@@ -7,7 +7,6 @@ import { assertBridgeReadyForTool, registerMmaTools, resolveNotebookTarget } fro
 import { startBunRuntime } from "../src/bun/index.js";
 import type { BridgeStatus } from "../src/types.js";
 
-const toolsSource = readFileSync(new URL("../src/mcp/tools.ts", import.meta.url), "utf8");
 const backendToolsSource = readFileSync(new URL("../src/mcp/backendTools.ts", import.meta.url), "utf8");
 const schemasSource = readFileSync(new URL("../src/mcp/toolSchemas.ts", import.meta.url), "utf8");
 const bunIndexSource = readFileSync(new URL("../src/bun/index.ts", import.meta.url), "utf8");
@@ -52,6 +51,29 @@ function status(overrides: Partial<BridgeStatus>): BridgeStatus {
   };
 }
 
+type LegacyMmaToolRegistration = {
+  name: string;
+  description: string;
+  handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>;
+};
+
+function registerLegacyMmaTools(getStatus: () => BridgeStatus = () => status({})): LegacyMmaToolRegistration[] {
+  const registrations: LegacyMmaToolRegistration[] = [];
+  const server = {
+    tool(
+      name: string,
+      description: string,
+      _schema: unknown,
+      handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>
+    ) {
+      registrations.push({ name, description, handler });
+    }
+  };
+
+  registerMmaTools(server as never, new RequestQueue(), getStatus);
+  return registrations;
+}
+
 describe("MCP tool bridge readiness", () => {
   it("uses explicit notebookId before the active notebook", () => {
     expect(
@@ -91,8 +113,10 @@ describe("MCP tool bridge readiness", () => {
   });
 
   it("registers the notebook list and notebook selection tools", () => {
-    expect(toolsSource).toContain('"mma_list_notebooks"');
-    expect(toolsSource).toContain('"mma_select_notebook"');
+    const names = registerLegacyMmaTools().map((registration) => registration.name);
+
+    expect(names).toContain("mma_list_notebooks");
+    expect(names).toContain("mma_select_notebook");
   });
 
   it("runs legacy abort evaluation without requiring MCP extra", async () => {
@@ -142,42 +166,74 @@ describe("MCP tool bridge readiness", () => {
   });
 
   it("registers all notebook operation tools", () => {
-    expect(backendToolsSource).toContain('"mma_list_cells"');
-    expect(backendToolsSource).toContain('"mma_read_cell"');
-    expect(backendToolsSource).toContain('"mma_insert_cell"');
-    expect(backendToolsSource).toContain('"mma_modify_cell"');
-    expect(backendToolsSource).toContain('"mma_delete_cell"');
-    expect(backendToolsSource).toContain('"mma_run_cell"');
-    expect(backendToolsSource).toContain('"mma_abort_evaluation"');
-    expect(backendToolsSource).toContain('"mma_get_cell_output"');
-    expect(backendToolsSource).toContain('"mma_save_notebook"');
-    expect(backendToolsSource).toContain('"mma_symbol_lookup"');
+    expect(registerLegacyMmaTools().map((registration) => registration.name)).toEqual([
+      "mma_status",
+      "mma_list_notebooks",
+      "mma_select_notebook",
+      "mma_list_cells",
+      "mma_read_cell",
+      "mma_insert_cell",
+      "mma_modify_cell",
+      "mma_delete_cell",
+      "mma_run_cell",
+      "mma_abort_evaluation",
+      "mma_get_cell_output",
+      "mma_save_notebook",
+      "mma_symbol_lookup"
+    ]);
   });
 
-  it("rejects displayName on the Node select path instead of falling back to active notebook", () => {
-    const handlerStart = toolsSource.indexOf('"mma_select_notebook"');
+  it("rejects displayName on the Node select path instead of falling back to active notebook", async () => {
+    const selectNotebook = registerLegacyMmaTools(() =>
+      status({
+        activeNotebookId: "nb-active",
+        notebooks: [{ notebookId: "nb-active", lastSeenAt: 1 }]
+      })
+    ).find((registration) => registration.name === "mma_select_notebook")!.handler;
 
-    expect(handlerStart).toBeGreaterThanOrEqual(0);
-    expect(toolsSource.slice(handlerStart)).toContain('displayName');
-    expect(toolsSource.slice(handlerStart)).toContain('throw new Error');
+    await expect(selectNotebook({ displayName: "Untitled.nb" })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({ code: "UNSUPPORTED_SELECTOR", tool: "mma_select_notebook" })
+      }
+    });
   });
 
-  it("validates notebook selection ids against the registered notebook list", () => {
-    const handlerStart = toolsSource.indexOf('"mma_select_notebook"');
+  it("validates notebook selection ids against the registered notebook list", async () => {
+    const selectNotebook = registerLegacyMmaTools(() =>
+      status({
+        activeNotebookId: "nb-active",
+        notebooks: [{ notebookId: "nb-active", lastSeenAt: 1 }]
+      })
+    ).find((registration) => registration.name === "mma_select_notebook")!.handler;
 
-    expect(handlerStart).toBeGreaterThanOrEqual(0);
-    expect(toolsSource.slice(handlerStart)).toContain('const notebookId = args.notebookId;');
-    expect(toolsSource.slice(handlerStart)).toContain('status.notebooks?.some((notebook) => notebook.notebookId === notebookId)');
-    expect(toolsSource.slice(handlerStart)).toContain('throw new Error(`Unknown notebookId: ${notebookId}`)');
+    await expect(selectNotebook({ notebookId: "missing" })).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "NOTEBOOK_NOT_FOUND",
+          message: "Unknown notebookId: missing",
+          tool: "mma_select_notebook",
+          notebookId: "missing"
+        })
+      }
+    });
   });
 
   it("surfaces notebook workflow guidance in legacy Node MCP tool descriptions", () => {
-    expect(toolsSource).toContain("Start by calling mma_status or mma_list_notebooks");
-    expect(toolsSource).toContain("Use the latest notebookId");
-    expect(toolsSource).toContain('afterCellId="__end__"');
-    expect(toolsSource).toContain("Debug live notebooks only through MCP notebook cells");
-    expect(toolsSource).toContain("Do not use detached wolframscript");
-    expect(toolsSource).toContain("Restart opencode or the mma MCP server");
+    const registrations = registerLegacyMmaTools();
+
+    const descriptions = registrations.map((registration) => registration.description).join("\n");
+    const insertDescription = registrations.find((registration) => registration.name === "mma_insert_cell")?.description ?? "";
+
+    expect(descriptions).toContain("Start by calling mma_status or mma_list_notebooks");
+    expect(descriptions).toContain("Use the latest notebookId");
+    expect(insertDescription).toContain('afterCellId="__end__"');
+    expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
+    expect(descriptions).toContain("Do not use detached wolframscript");
+    expect(descriptions).toContain("Restart opencode or the mma MCP server");
   });
 
   it("fails immediately when the Palette is not connected", () => {
@@ -246,18 +302,77 @@ describe("Bun backend MCP compatibility", () => {
     ]);
 
     await expect(registrations[0]!.handler({})).resolves.toMatchObject({
-      structuredContent: expect.objectContaining({ server: "running" }),
+      structuredContent: expect.objectContaining({ ok: true, server: "running" }),
       content: [expect.objectContaining({ type: "text", text: expect.stringContaining('"server": "running"') })]
     });
 
     await expect(registrations[1]!.handler({})).resolves.toMatchObject({
-      structuredContent: expect.objectContaining({ notebooks: expect.any(Array) })
+      structuredContent: expect.objectContaining({ ok: true, notebooks: expect.any(Array) })
     });
 
     await expect(registrations[2]!.handler({ notebookId: "nb-1" })).resolves.toMatchObject({
       structuredContent: expect.objectContaining({ ok: true, activeNotebookId: "nb-1" })
     });
     expect(state.activeNotebookId).toBe("nb-1");
+  });
+
+  it("returns structured errors from backend tools instead of throwing plain exceptions", async () => {
+    const registrations: Array<{ name: string; handler: (args: Record<string, unknown>) => Promise<unknown> }> = [];
+    const server = {
+      tool(name: string, _description: string, _schema: unknown, handler: (args: Record<string, unknown>) => Promise<unknown>) {
+        registrations.push({ name, handler });
+      }
+    };
+
+    registerBackendMcpTools(server as never, new BackendState(() => "nb-1"));
+
+    const listCells = registrations.find((entry) => entry.name === "mma_list_cells")!.handler;
+
+    await expect(listCells({})).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "NO_LIVE_AGENT",
+          tool: "mma_list_cells",
+          retryable: true
+        })
+      },
+      content: [expect.objectContaining({ type: "text", text: expect.stringContaining('"ok": false') })]
+    });
+  });
+
+  it("returns structured errors from the legacy Node tool path", async () => {
+    const registrations: Array<{
+      name: string;
+      handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>;
+    }> = [];
+    const server = {
+      tool(
+        name: string,
+        _description: string,
+        _schema: unknown,
+        handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>
+      ) {
+        registrations.push({ name, handler });
+      }
+    };
+
+    registerMmaTools(server as never, new RequestQueue(), () => status({ paletteConnected: false }));
+
+    const listCells = registrations.find((entry) => entry.name === "mma_list_cells")!.handler;
+
+    await expect(listCells({})).resolves.toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: expect.objectContaining({
+          code: "PALETTE_NOT_CONNECTED",
+          tool: "mma_list_cells",
+          retryable: true
+        })
+      }
+    });
   });
 
   it("registers mma_symbol_lookup with query parameter", async () => {
@@ -289,17 +404,23 @@ describe("Bun backend MCP compatibility", () => {
   it("stops the HTTP server when MCP startup fails", async () => {
     const stop = vi.fn().mockResolvedValue(undefined);
     const tool = vi.fn();
+    const prompt = vi.fn();
     const connect = vi.fn().mockRejectedValue(new Error("stdio failed"));
 
     await expect(
       startBunRuntime({
         bridgeOnly: false,
         createHttpApp: async () => ({ port: 19791, stop }),
-        createMcpServer: () => ({ tool, connect } as never)
+        createMcpServer: () => ({ tool, prompt, connect } as never)
       })
     ).rejects.toThrow("stdio failed");
 
     expect(stop).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith(
+      "mica_notebook_workflow",
+      expect.stringContaining("Mathematica notebook"),
+      expect.any(Function)
+    );
   });
 
   it("cleans up HTTP and signal handlers when MCP setup throws after HTTP starts", async () => {
@@ -329,12 +450,13 @@ describe("Bun backend MCP compatibility", () => {
     const removeSignals = vi.fn();
     const installSignals = vi.fn().mockReturnValue(removeSignals);
     const tool = vi.fn();
+    const prompt = vi.fn();
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
-      createMcpServer: () => ({ tool, connect } as never),
+      createMcpServer: () => ({ tool, prompt, connect } as never),
       installSignalHandlers: installSignals
     });
 
@@ -350,12 +472,13 @@ describe("Bun backend MCP compatibility", () => {
     const removeSignals = vi.fn();
     const installSignals = vi.fn().mockReturnValue(removeSignals);
     const tool = vi.fn();
+    const prompt = vi.fn();
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
-      createMcpServer: () => ({ tool, connect } as never),
+      createMcpServer: () => ({ tool, prompt, connect } as never),
       installSignalHandlers: installSignals
     });
 
@@ -368,15 +491,17 @@ describe("Bun backend MCP compatibility", () => {
   it("keeps the HTTP server running after MCP setup succeeds", async () => {
     const stop = vi.fn().mockResolvedValue(undefined);
     const tool = vi.fn();
+    const prompt = vi.fn();
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
-      createMcpServer: () => ({ tool, connect } as never)
+      createMcpServer: () => ({ tool, prompt, connect } as never)
     });
 
     expect(connect).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledTimes(1);
     expect(stop).not.toHaveBeenCalled();
     expect(runtime.keepAlive).toBeInstanceOf(Promise);
     await runtime.stop();

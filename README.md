@@ -1,68 +1,151 @@
-# MICA — Mathematica Interactive Control Agent
+# MICA
 
-Local MCP bridge for controlling already-open Mathematica / Wolfram Desktop notebooks through one Wolfram Paclet Palette.
+**Mathematica Interactive Control Agent**
 
-## Architecture
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+![Node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?logo=node.js&logoColor=white)
+![Bun](https://img.shields.io/badge/runtime-Bun-f3e7d3?logo=bun&logoColor=111111)
+![MCP](https://img.shields.io/badge/protocol-MCP-2563eb)
+![Wolfram Desktop](https://img.shields.io/badge/Wolfram%20Desktop-14.1%2B-dd1100)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-111827)
+
+MICA lets an MCP-capable coding agent control the Mathematica notebook you already have open: list notebooks, inspect cells, insert code, run evaluations, read outputs/messages, abort long computations, and look up Wolfram Language symbols without writing `.nb` files directly.
+
+![MICA architecture hero](docs/assets/mica-readme-hero.png)
+
+## Why MICA?
+
+- **Works in real notebooks**: the agent acts on visible Wolfram Desktop notebooks instead of a detached headless kernel.
+- **Agent-friendly workflow**: `mma_status`, `mma_list_notebooks`, structured errors, and a built-in MCP prompt tell the agent how to proceed.
+- **Permission-gated control**: read, insert, modify, delete, run, and save permissions are explicit.
+- **No raw eval endpoint**: code execution happens through notebook cells, so the interaction stays inspectable.
+- **Local-first**: the bridge binds to `127.0.0.1`; notebook files are not edited by the Node/Bun process.
+- **Release-minded**: install/uninstall is reversible and keeps timestamped `Kernel/init.m` backups.
+
+## How It Works
 
 ```text
-MCP Client / Coding Agent
+MCP client / coding agent
         |
-        | MCP over stdio
+        | stdio MCP
         v
-Bun backend / MCP server
+Bun MCP server + localhost dashboard
         |
-        | localhost HTTP dashboard / queue / API
+        | HTTP queue on 127.0.0.1:19791
         v
-Hidden Wolfram FrontEnd agent
+Hidden Wolfram FrontEnd control agent
         |
         | NotebookRead / NotebookWrite / Cells / CellObject
         v
-Selected NotebookObject
+Your already-open Mathematica notebook
 ```
 
-The Bun backend exposes the MCP tools, dashboard, request queue, timeouts, and stale cleanup on `127.0.0.1:19791`. Wolfram Desktop only runs a hidden FrontEnd agent for live notebook operations. Notebook files are never edited directly.
+The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evaluator. Your normal notebooks stay on their own evaluator, while MICA keeps polling, queueing, timeout handling, and abort requests responsive.
 
-## Bun hidden-agent mode
+## Requirements
 
-Bun now owns MCP orchestration, the notebook registry, request timeouts, stale cleanup, and the dashboard UI. Wolfram Desktop still runs a hidden FrontEnd agent for live notebook operations only.
+| Requirement | Notes |
+| --- | --- |
+| Wolfram Desktop / Mathematica | 14.1+ recommended for the current control-kernel flow. Headless Wolfram Engine is not supported for live notebook control. |
+| Node.js | 20 or newer. |
+| Bun | Used by the primary MCP/runtime entrypoint. |
+| MCP client | Codex, Claude Desktop, Cursor, or any stdio MCP client. |
 
-- Dashboard URL: `http://127.0.0.1:19791/`
-- Start the Bun runtime: `npm run dev:bun`
-- Start the Bun MCP server: `npm run dev:bun:mcp`
-- Configure Wolfram Desktop autoload from this checkout:
+## Quick Start
 
-```powershell
+```bash
+git clone https://github.com/Alice-Shimada/mica.git
+cd mica
+npm ci
 node scripts/install.js
 ```
 
-The installer edits only the per-user `<Wolfram user base>\Kernel\init.m`, creates a timestamped backup, and prints MCP snippets instead of editing MCP client config. It does **not** edit `FrontEnd/init.m`, does **not** edit system-level Wolfram files, and does **not** edit MCP client configs. Headless Wolfram Engine is not supported for live notebook control. Restart Wolfram Desktop after install or uninstall.
+Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
 
-Dry-run and uninstall:
+```bash
+npm run dev:bun:mcp
+```
 
-```powershell
+Dashboard:
+
+```text
+http://127.0.0.1:19791/
+```
+
+The installer edits only your per-user Wolfram `Kernel/init.m`, creates a timestamped backup, and prints MCP client config snippets. It does not edit system Wolfram files and does not edit MCP client configs for you.
+
+Dry run and uninstall:
+
+```bash
 node scripts/install.js --dry-run
 node scripts/install.js --uninstall
 ```
 
-`StartMMAAgentControlKernel[]` creates or reuses a FrontEnd evaluator named `MMAAgentControl`, starts the hidden agent from an invisible control notebook bound to that evaluator, and leaves normal notebooks on their existing evaluator. This keeps bridge polling and abort requests responsive when a user notebook's `Local` kernel is busy.
+## MCP Client Config
 
-Notebook names are mutable. Saving a notebook updates its `displayName` and path while preserving the same `notebookId`. If multiple live notebooks share a name, lookups return an ambiguity result instead of guessing.
+Use the Bun entrypoint from your local checkout. For example:
 
-## Workflow
+```toml
+[mcp_servers.mica]
+command = "bun"
+args = ["run", "/absolute/path/to/mica/src/bun/index.ts"]
+```
 
-1. Run `node scripts/install.js` once for this checkout, then fully restart Wolfram Desktop so the control-kernel hidden agent autoloads. If Wolfram Desktop was already open before installation, new notebooks can reuse an old kernel that has not read the updated `Kernel/init.m`; quit and reopen Desktop, or use the manual startup fallback below.
-2. Start the Bun runtime with `npm run dev:bun` or point your MCP client at `npm run dev:bun:mcp`.
-3. Open the dashboard at `http://127.0.0.1:19791/` to watch notebook registration, live status, queueing, and request results.
-4. Use MCP tools against the Bun server; live notebook operations are executed by the hidden Wolfram FrontEnd agent.
-5. Notebook names may change over time; saving updates the notebook's display name/path while preserving `notebookId`.
-6. If multiple live notebooks share a name, the lookup returns an ambiguity result instead of guessing.
+If your client needs a full executable path, use the result of `which bun`.
 
-### Manual hidden-agent startup fallback
+## Agent Guide Prompt
 
-If you do not want to edit `Kernel/init.m`, or if Wolfram Desktop was already running before installation, start Wolfram Desktop and evaluate the direct startup command, replacing the path with your checkout path. The permission block matches the installer defaults: notebook read/insert/modify/delete/run are enabled, while saving remains disabled.
+MICA exposes usage guidance in two MCP-facing places:
+
+- Server initialization `instructions`
+- Reusable prompt: `mica_notebook_workflow`
+
+The prompt tells the agent to start with `mma_status` or `mma_list_notebooks`, use current `notebookId` values, avoid hidden/offscreen notebooks, avoid detached `wolframscript` for live-notebook work, and handle structured `ok: true` / `ok: false` responses.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `mma_status` | Report server, agent, and notebook registry state. |
+| `mma_list_notebooks` | List registered live notebooks and the active notebook id. |
+| `mma_select_notebook` | Select the active notebook by `notebookId` or unambiguous `displayName`. |
+| `mma_symbol_lookup` | Look up Wolfram Language usage, options, attributes, and documentation URLs. |
+| `mma_list_cells` | List cells in the selected notebook. |
+| `mma_read_cell` | Read one cell's content and metadata. |
+| `mma_insert_cell` | Insert a cell; use `afterCellId="__end__"` to append. |
+| `mma_modify_cell` | Modify an existing cell. |
+| `mma_delete_cell` | Delete an existing cell. |
+| `mma_run_cell` | Evaluate one cell with a timeout. |
+| `mma_abort_evaluation` | Abort the current notebook evaluation. |
+| `mma_get_cell_output` | Read output and messages for a cell. |
+| `mma_save_notebook` | Save the notebook when `SaveNotebook` permission is granted. |
+
+All MCP tools return JSON text plus `structuredContent`.
+
+```json
+{ "ok": true, "result": "..." }
+```
+
+Expected failures are structured and set the MCP `isError` flag:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "PERMISSION_DENIED",
+    "message": "The selected notebook did not grant permission for this tool.",
+    "retryable": false,
+    "tool": "mma_save_notebook"
+  }
+}
+```
+
+## Manual Wolfram Startup
+
+If you do not want to edit `Kernel/init.m`, start Wolfram Desktop and evaluate the following after replacing the path:
 
 ```wolfram
-Get["D:\\Project\\mica\\paclet\\Kernel\\MMAAgentBridge.wl"];
+Get["/absolute/path/to/mica/paclet/Kernel/MMAAgentBridge.wl"];
 MMAAgentBridge`Private`$BridgePermissions = <|
   "ReadNotebook" -> True,
   "InsertCell" -> True,
@@ -74,137 +157,59 @@ MMAAgentBridge`Private`$BridgePermissions = <|
 MMAAgentBridge`StartMMAAgentControlKernel[]
 ```
 
-### Legacy Palette flow (temporary)
-
-The older Palette registration/dropdown flow is retained only for compatibility during migration.
-
-1. Start the legacy bridge with `npm run dev`.
-2. Open the Paclet Palette in Wolfram Desktop.
-3. Click **Register Current Window** or **Allow control of current Notebook**.
-4. Use the Palette dropdown to choose the default notebook for MCP calls that do not pass `notebookId`.
-5. Write/run/delete/save actions require confirmation unless their global permission is enabled in the Palette.
-
-## Notebook targeting
-
-The bridge supports multiple open notebooks from one Palette.
-
-- `mma_list_notebooks` lists registered notebooks and the active/default notebook id.
-- `mma_select_notebook` changes the active/default notebook.
-- Notebook operation tools accept an optional `notebookId`.
-- If a tool call includes `notebookId`, that notebook is used.
-- If a tool call omits `notebookId`, the Palette-selected active notebook is used.
-- If no notebook is selected, the tool fails immediately instead of hanging.
-- `mma_symbol_lookup` queries Wolfram Language function documentation. Provide an exact symbol name (e.g. `"Plot"`) for full details including usage, options, attributes, and documentation URL, or a partial name (e.g. `"integrate"`) for a list of matching symbols.
-
-Permissions are global and shared across notebooks.
-
-## Stability model
-
-**Bun hidden-agent mode:** The hidden agent runs from the dedicated `MMAAgentControl` FrontEnd evaluator (invisible control notebook). It polls `/agents/.../next-request` and executes FrontEnd notebook operations against visible notebooks. The control kernel keeps bridge polling and abort requests responsive even when a user notebook's `Local` kernel is busy.
-
-**Legacy Palette mode:** The legacy Palette still uses a single consolidated `/poll` request for status, cancellation, and request delivery.
-
 ## Development
 
-```powershell
-npm install
-npm run dev
-npm run dev:bun
+```bash
 npm test
 npm run typecheck
 npm run build
-```
-
-- `npm run dev` starts the HTTP bridge only for manual Palette/browser testing.
-- `npm run dev:mcp` starts the legacy stdio MCP server + HTTP bridge for compatibility testing.
-- `npm run dev:bun` starts the Bun dashboard/runtime for the migrated bridge.
-- `npm run dev:bun:mcp` starts the Bun MCP entrypoint.
-- `npm run build` emits the production JS in `dist/`.
-
-## Run the MCP server
-
-For Bun hidden-agent development, start the Bun runtime and dashboard at `http://127.0.0.1:19791/`:
-
-```powershell
 npm run dev:bun
-```
-
-You can then check bridge status with either PowerShell or curl:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:19791/status
-curl.exe http://127.0.0.1:19791/status
-```
-
-For the migrated flow, point your MCP client at the Bun MCP server:
-
-```powershell
 npm run dev:bun:mcp
 ```
 
-The legacy Node package command / `dist\src\index.js` entrypoint remains available only until config migration is complete; it is not the primary Bun path.
+Common commands:
 
-Running the legacy stdio MCP mode directly in a normal terminal may exit when stdin closes; use `npm run dev` for manual Palette/HTTP testing.
+| Command | Use |
+| --- | --- |
+| `npm run dev:bun` | Start the Bun runtime and dashboard without stdio MCP. |
+| `npm run dev:bun:mcp` | Start the primary Bun MCP server. |
+| `npm run dev` | Start the legacy Node HTTP bridge for Palette compatibility testing. |
+| `npm run build` | Emit production JavaScript under `dist/`. |
 
-If you need the legacy built entrypoint:
+## Verification Checklist
 
-```powershell
-npm run build
-node dist\src\index.js
-```
-
-## Paclet install and open
-
-Development install:
-
-```wolfram
-PacletInstall["paclet"]
-Needs["MMAAgentBridge`"]
-MMAAgentBridge`StartMMAAgentPalette[]
-```
-
-Or, if you prefer a direct directory load, replace the path with your local paclet directory:
-
-```wolfram
-PacletDirectoryLoad["<local path to the paclet directory>"]
-```
-
-You can also open `paclet/FrontEnd/Palettes/MMAAgentBridge.nb` from Wolfram Desktop after the paclet is loaded.
-
-## Security defaults
-
-- MVP has no HTTP auth/token and relies on binding only to `127.0.0.1`.
-- No direct raw-eval endpoint is exposed; code execution happens only through confirmed/permission-gated notebook cell operations.
-- No shell or arbitrary filesystem tools are exposed; `mma_save_notebook` can save the attached notebook, but there are no arbitrary filesystem write/read tools.
-- One request is processed at a time across all notebooks.
-- In the legacy Palette flow, write, run, delete, and save operations require Palette confirmation unless enabled globally.
-- Notebook data is handled through FrontEnd APIs; the Node process does not directly edit `.nb` files.
-
-## Known limitations
-
-- Cancellation is best-effort. If the notebook kernel is busy, Palette polling may be delayed.
-- Running-status updates are also best-effort and may briefly lag behind the actual evaluation state.
-- `mma_run_cell` may report `started` before outputs are available; use `mma_get_cell_output` to inspect final messages and results.
-- Cell IDs are session-local and may change after reopening the notebook.
-- Cell IDs are session-local and per registered notebook.
-- The first redesigned implementation keeps FrontEnd execution serial even when multiple notebooks are registered.
-
-## Verification
-
-Recommended local verification:
-
-```powershell
+```bash
 npm test
 npm run typecheck
 npm run build
 node scripts/install.js --dry-run
 ```
 
-Live verification steps:
+Live smoke test:
 
-1. Run `node scripts/install.js` and restart Wolfram Desktop.
-2. Confirm `mma_status` reports an online agent and a registered notebook.
-3. Confirm insert, read, modify, run, get-output, delete, and abort all work against a live notebook.
-4. Run `node scripts/install.js --uninstall` and restart Wolfram Desktop.
-5. Confirm the marked block is removed from `Kernel/init.m` while unrelated content remains.
-6. Confirm `mma_symbol_lookup("Plot")` returns usage, options, attributes, and URL.
+1. Run `node scripts/install.js`.
+2. Fully restart Wolfram Desktop.
+3. Open a notebook.
+4. Confirm `mma_status` reports an online agent and a registered notebook.
+5. Confirm insert, read, modify, run, get-output, delete, abort, and symbol lookup work against that notebook.
+6. Run `node scripts/install.js --uninstall` and confirm the marked block is removed from `Kernel/init.m`.
+
+## Security Model
+
+- MICA binds its HTTP bridge to `127.0.0.1`.
+- The MVP does not include HTTP auth or a remote access mode.
+- There is no arbitrary shell tool and no direct raw-eval MCP endpoint.
+- Notebook mutation goes through Wolfram FrontEnd APIs and explicit permissions.
+- `mma_save_notebook` is disabled by default in the installer permission block.
+- The Node/Bun process does not directly edit `.nb` files.
+
+## Known Limitations
+
+- Cancellation is best-effort when the Wolfram kernel is already busy.
+- Cell ids are session-local and can change after reopening a notebook.
+- FrontEnd notebook operations are currently serialized.
+- The legacy Palette flow remains only for compatibility during migration.
+
+## License
+
+MIT
