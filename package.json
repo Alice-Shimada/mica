@@ -4,14 +4,17 @@
   "description": "Local MCP bridge for controlling active Mathematica notebooks through a Wolfram Paclet Palette.",
   "type": "module",
   "bin": {
-    "mica": "dist/src/index.js"
+    "mica": "dist/src/bun/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx src/index.ts --bridge-only",
-    "dev:mcp": "tsx src/index.ts",
-    "dev:bun": "bun run src/bun/index.ts --bridge-only",
+    "start:mcp": "node dist/src/bun/index.js",
+    "dev:mcp": "tsx src/bun/index.ts",
+    "dev:bridge": "tsx src/bun/index.ts --bridge-only",
     "dev:bun:mcp": "bun run src/bun/index.ts",
+    "dev:bun": "bun run src/bun/index.ts --bridge-only",
+    "dev:legacy": "tsx src/index.ts --bridge-only",
+    "dev:legacy:mcp": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"

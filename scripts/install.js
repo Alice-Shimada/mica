@@ -372,6 +372,14 @@ export function renderMcpSnippets(
   bridgeRoot,
   { bunCommand = "bun", nodeCommand = "node" } = {}
 ) {
+  const nodeSnippet = {
+    mcpServers: {
+      "mica": {
+        command: nodeCommand,
+        args: [path.join(bridgeRoot, "dist", "src", "bun", "index.js")],
+      },
+    },
+  };
   const bunSnippet = {
     mcpServers: {
       "mica": {
@@ -380,22 +388,14 @@ export function renderMcpSnippets(
       },
     },
   };
-  const nodeSnippet = {
-    mcpServers: {
-      "mica": {
-        command: nodeCommand,
-        args: [path.join(bridgeRoot, "dist", "src", "index.js")],
-      },
-    },
-  };
   return [
     "MCP config snippets (copy into your MCP client config; this installer does not edit it):",
     "",
-    "Bun development mode:",
-    JSON.stringify(bunSnippet, null, 2),
-    "",
-    "Built Node fallback:",
+    "Production (built Node):",
     JSON.stringify(nodeSnippet, null, 2),
+    "",
+    "Development (Bun):",
+    JSON.stringify(bunSnippet, null, 2),
     "",
     renderWolframStartupSnippet(bridgeRoot),
   ].join("\n");

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// Legacy Palette compatibility path. Product entrypoint is src/bun/index.ts.
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { HttpBridge } from "./bridge/httpBridge.js";
 import { RequestQueue } from "./bridge/requestQueue.js";

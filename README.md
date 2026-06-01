@@ -48,7 +48,7 @@ The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evalua
 | --- | --- |
 | Wolfram Desktop / Mathematica | 14.1+ recommended for the current control-kernel flow. Headless Wolfram Engine is not supported for live notebook control. |
 | Node.js | 20 or newer. |
-| Bun | Used by the primary MCP/runtime entrypoint. |
+| Bun | Optional. Used for development hot-reload (`npm run dev:mcp`). Production path uses Node. |
 | MCP client | Codex, Claude Desktop, Cursor, or any stdio MCP client. |
 
 ## Quick Start
@@ -57,13 +57,14 @@ The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evalua
 git clone https://github.com/Alice-Shimada/mica.git
 cd mica
 npm ci
+npm run build
 node scripts/install.js
 ```
 
 Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
 
 ```bash
-npm run dev:bun:mcp
+npm run start:mcp
 ```
 
 Dashboard:
@@ -83,15 +84,21 @@ node scripts/install.js --uninstall
 
 ## MCP Client Config
 
-Use the Bun entrypoint from your local checkout. For example:
+Use the built Node entrypoint from your local checkout:
+
+```toml
+[mcp_servers.mica]
+command = "node"
+args = ["/absolute/path/to/mica/dist/src/bun/index.js"]
+```
+
+For development with hot-reload, use Bun:
 
 ```toml
 [mcp_servers.mica]
 command = "bun"
 args = ["run", "/absolute/path/to/mica/src/bun/index.ts"]
 ```
-
-If your client needs a full executable path, use the result of `which bun`.
 
 ## Agent Guide Prompt
 
