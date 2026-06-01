@@ -15,7 +15,10 @@ PollCancellations::usage = "PollCancellations[] polls palette-originated cancell
 
 Begin["`Private`"];
 
-$BridgeBaseURL = "http://127.0.0.1:19791";
+$DefaultBridgeBaseURL = "http://127.0.0.1:19791";
+$BridgeBaseURL = $DefaultBridgeBaseURL;
+$BridgeAuthToken = None;
+$BridgeSessionFile = Automatic;
 $BridgeNotebooks = <||>;
 $ActiveNotebookId = None;
 $PaletteId = CreateUUID["palette-"];
@@ -60,6 +63,42 @@ $ControlAgentNotebook = None;
 $ControlAgentEvaluatorName = "MMAAgentControl";
 
 UnixTimeMilliseconds[] := Round[1000 UnixTime[]];
+
+NonEmptyStringQ[value_] := StringQ[value] && StringLength[value] > 0;
+
+EnvironmentValue[name_String] := Module[{value},
+  value = Quiet @ Check[Environment[name], ""];
+  If[NonEmptyStringQ[value], value, ""]
+];
+
+DefaultBridgeSessionFile[] := Module[{override, home},
+  override = EnvironmentValue["MICA_SESSION_FILE"];
+  If[NonEmptyStringQ[override], Return[override]];
+  home = EnvironmentValue["HOME"];
+  If[!NonEmptyStringQ[home], home = EnvironmentValue["USERPROFILE"]];
+  If[!NonEmptyStringQ[home], home = Directory[]];
+  FileNameJoin[{home, ".mica", "session.json"}]
+];
+
+If[$BridgeSessionFile === Automatic, $BridgeSessionFile = DefaultBridgeSessionFile[]];
+
+LoadBridgeSession[] := Module[{sessionFile = $BridgeSessionFile, payload},
+  If[!StringQ[sessionFile] || !FileExistsQ[sessionFile], Return[<||>]];
+  payload = Quiet @ Check[Import[sessionFile, "RawJSON"], $Failed];
+  If[AssociationQ[payload], payload, <||>]
+];
+
+ConfigureBridgeFromSession[] := Module[{session, baseUrl, token},
+  session = LoadBridgeSession[];
+  baseUrl = Lookup[session, "baseUrl", None];
+  If[NonEmptyStringQ[baseUrl],
+    $BridgeBaseURL = baseUrl,
+    $BridgeBaseURL = $DefaultBridgeBaseURL
+  ];
+  token = Lookup[session, "authToken", None];
+  $BridgeAuthToken = If[NonEmptyStringQ[token], token, None];
+  $BridgeBaseURL
+];
 
 (* $BridgePermissions replaces the plan's $Permissions name because *)
 (* $Permissions is a protected Wolfram built-in symbol (Set::wrsym). *)
@@ -454,7 +493,14 @@ PaletteView[] := DynamicModule[{},
   ]
 ];
 
-BridgeURL[path_String] := $BridgeBaseURL <> path;
+(* Re-read the small session file before each request so Wolfram follows MCP restarts and dynamic ports. *)
+BridgeURL[path_String] := ConfigureBridgeFromSession[] <> path;
+
+BridgeHeaders[] := If[
+  StringQ[$BridgeAuthToken] && StringLength[$BridgeAuthToken] > 0,
+  {"Authorization" -> "Bearer " <> $BridgeAuthToken},
+  {}
+];
 
 URLComponentEncodeString[None] := "";
 URLComponentEncodeString[value_] := StringReplace[
@@ -513,7 +559,7 @@ JsonByteArrayToPayload[body_ByteArray] := Module[{text},
 ];
 
 BridgeGet[path_String] := Module[{response},
-  response = BridgeRequestWithRetries[HTTPRequest[BridgeURL[path], <|"Method" -> "GET"|>]];
+  response = BridgeRequestWithRetries[HTTPRequest[BridgeURL[path], <|"Method" -> "GET", "Headers" -> BridgeHeaders[]|>]];
   If[response === $Failed, Return[$Failed]];
   JsonByteArrayToPayload[response["BodyByteArray"]]
 ];
@@ -524,6 +570,7 @@ BridgePost[path_String, payload_Association] := Module[{response},
       BridgeURL[path],
       <|
         "Method" -> "POST",
+        "Headers" -> BridgeHeaders[],
         "ContentType" -> "application/json; charset=utf-8",
         "Body" -> PayloadToJsonBytes[payload]
       |>

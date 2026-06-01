@@ -11,6 +11,21 @@ const backendToolsSource = readFileSync(new URL("../src/mcp/backendTools.ts", im
 const schemasSource = readFileSync(new URL("../src/mcp/toolSchemas.ts", import.meta.url), "utf8");
 const bunIndexSource = readFileSync(new URL("../src/bun/index.ts", import.meta.url), "utf8");
 
+const runtimeConfig = {
+  host: "127.0.0.1",
+  preferredPort: 19791,
+  sessionFile: "test-session.json",
+  authToken: undefined,
+  bridgeOnly: false,
+};
+
+function disableSessionFileWrites() {
+  return {
+    runtimeConfig,
+    writeSessionFile: vi.fn().mockResolvedValue({} as never),
+  };
+}
+
 function makeBackendState() {
   const now = Date.now();
   const permissions = {
@@ -409,6 +424,7 @@ describe("Bun backend MCP compatibility", () => {
 
     await expect(
       startBunRuntime({
+        ...disableSessionFileWrites(),
         bridgeOnly: false,
         createHttpApp: async () => ({ port: 19791, stop }),
         createMcpServer: () => ({ tool, prompt, connect } as never)
@@ -431,6 +447,7 @@ describe("Bun backend MCP compatibility", () => {
 
     await expect(
       startBunRuntime({
+        ...disableSessionFileWrites(),
         bridgeOnly: false,
         createHttpApp: async () => ({ port: 19791, stop }),
         createMcpServer: () => {
@@ -454,6 +471,7 @@ describe("Bun backend MCP compatibility", () => {
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
+      ...disableSessionFileWrites(),
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
       createMcpServer: () => ({ tool, prompt, connect } as never),
@@ -476,6 +494,7 @@ describe("Bun backend MCP compatibility", () => {
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
+      ...disableSessionFileWrites(),
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
       createMcpServer: () => ({ tool, prompt, connect } as never),
@@ -495,6 +514,7 @@ describe("Bun backend MCP compatibility", () => {
     const connect = vi.fn().mockResolvedValue(undefined);
 
     const runtime = await startBunRuntime({
+      ...disableSessionFileWrites(),
       bridgeOnly: false,
       createHttpApp: async () => ({ port: 19791, stop }),
       createMcpServer: () => ({ tool, prompt, connect } as never)

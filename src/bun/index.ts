@@ -5,10 +5,13 @@ import { pathToFileURL } from "node:url";
 import { BackendState } from "../backend/backendState.js";
 import { registerBackendMcpTools } from "../mcp/backendTools.js";
 import { createMicaMcpServer, registerMicaPrompts } from "../mcp/prompts.js";
+import type { MicaRuntimeConfig } from "../runtime/config.js";
+import { loadRuntimeConfig } from "../runtime/config.js";
+import { writeSessionFile } from "../runtime/session.js";
 import { createBunHttpApp } from "./httpServer.js";
 
-const PORT = 19_791;
-const MCPP_SERVER_NAME = "mica-bun";
+const MCP_SERVER_NAME = "mica-bun";
+const MICA_PACKAGE_VERSION = "0.1.0";
 
 export type BunRuntimeDeps = {
   bridgeOnly?: boolean;
@@ -16,7 +19,10 @@ export type BunRuntimeDeps = {
   createMcpServer?: () => Pick<McpServer, "connect" | "prompt" | "tool">;
   createTransport?: () => StdioServerTransport;
   installSignalHandlers?: (onSignal: (signal: NodeJS.Signals) => void) => () => void;
+  runtimeConfig?: MicaRuntimeConfig;
   state?: BackendState;
+  version?: string;
+  writeSessionFile?: typeof writeSessionFile;
 };
 
 export type BunRuntime = {
@@ -27,11 +33,14 @@ export type BunRuntime = {
 };
 
 export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRuntime> {
-  const bridgeOnly = deps.bridgeOnly ?? process.argv.includes("--bridge-only");
+  const config = deps.runtimeConfig ?? loadRuntimeConfig();
+  const bridgeOnly = deps.bridgeOnly ?? config.bridgeOnly;
   const state = deps.state ?? new BackendState(() => `notebook-${randomUUID()}`);
   const createHttpApp = deps.createHttpApp ?? createBunHttpApp;
-  const createMcpServer = deps.createMcpServer ?? (() => createMicaMcpServer(MCPP_SERVER_NAME));
+  const createMcpServer = deps.createMcpServer ?? (() => createMicaMcpServer(MCP_SERVER_NAME));
   const createTransport = deps.createTransport ?? (() => new StdioServerTransport());
+  const writeSession = deps.writeSessionFile ?? writeSessionFile;
+  const version = deps.version ?? MICA_PACKAGE_VERSION;
   const installSignalHandlers =
     deps.installSignalHandlers ??
     ((onSignal: (signal: NodeJS.Signals) => void) => {
@@ -42,7 +51,7 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
         process.off("SIGTERM", onSignal);
       };
     });
-  const httpApp = await createHttpApp({ state, port: PORT });
+  const httpApp = await createHttpApp({ state, host: config.host, port: config.preferredPort });
   let cleanupSignals = () => {};
   let stopped = false;
   let stopPromise: Promise<void> | undefined;
@@ -59,16 +68,24 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
   };
 
   const onSignal = (signal: NodeJS.Signals) => {
-    void stop().finally(() => process.exit(signal === "SIGINT" ? 0 : 0));
+    void stop().finally(() => process.exit(0));
   };
 
   try {
     cleanupSignals = installSignalHandlers(onSignal);
+    await writeSession(config.sessionFile, {
+      host: config.host,
+      port: httpApp.port,
+      authToken: config.authToken,
+      pid: process.pid,
+      version,
+      status: "running",
+    });
     const server = createMcpServer();
     registerBackendMcpTools(server as McpServer, state);
     registerMicaPrompts(server);
 
-    console.error(`Bun HTTP server listening on http://127.0.0.1:${httpApp.port}`);
+    console.error(`Bun HTTP server listening on http://${config.host}:${httpApp.port}`);
     if (!bridgeOnly) {
       console.error("Bun MCP mode enabled; connecting stdio transport.");
       await server.connect(createTransport());
@@ -99,4 +116,4 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   });
 }
 
-export { MCPP_SERVER_NAME, PORT };
+export { MCP_SERVER_NAME };

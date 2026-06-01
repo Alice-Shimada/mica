@@ -169,6 +169,33 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     }
   });
 
+  it("discovers the bridge URL from the MICA session file and reserves auth headers", () => {
+    const requiredSnippets = [
+      "$DefaultBridgeBaseURL",
+      "$BridgeAuthToken = None",
+      "$BridgeSessionFile = Automatic",
+      "If[$BridgeSessionFile === Automatic, $BridgeSessionFile = DefaultBridgeSessionFile[]];",
+      "DefaultBridgeSessionFile[] := Module",
+      'EnvironmentValue["MICA_SESSION_FILE"]',
+      'FileNameJoin[{home, ".mica", "session.json"}]',
+      "LoadBridgeSession[] := Module",
+      'Import[sessionFile, "RawJSON"]',
+      "ConfigureBridgeFromSession[] := Module",
+      'Lookup[session, "baseUrl", None]',
+      'Lookup[session, "authToken", None]',
+      "BridgeHeaders[] := If",
+      '"Authorization" -> "Bearer " <> $BridgeAuthToken',
+      "BridgeURL[path_String] := ConfigureBridgeFromSession[] <> path",
+      '"Headers" -> BridgeHeaders[]',
+    ];
+
+    for (const snippet of requiredSnippets) {
+      expect(source).toContain(snippet);
+    }
+
+    expect(source).not.toContain('$BridgeBaseURL = "http://127.0.0.1:19791";');
+  });
+
   it("decodes bridge JSON responses from raw bytes as UTF-8 for Unicode payloads", () => {
     const requestStart = source.indexOf("BridgeRequestWithRetries[request_] :=");
     const getStart = source.indexOf("BridgeGet[path_String] :=");

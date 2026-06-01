@@ -37,6 +37,17 @@ describe("Bun HTTP app", () => {
     expect(html).toContain("setTimeout");
   });
 
+  it("binds the HTTP server to a configured host", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, host: "127.0.0.1", port: 0 });
+    servers.push(server);
+
+    const response = await fetch(`http://127.0.0.1:${server.port}/status`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ server: "running" });
+  });
+
   it("reports status, registers agents, and lists notebooks", async () => {
     const state = new BackendState(() => "notebook-1");
     const server = await createBunHttpApp({ state, port: 0 });

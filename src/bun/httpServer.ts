@@ -11,6 +11,7 @@ export type BunHttpApp = {
 
 export type BunHttpAppOptions = {
   state: BackendState;
+  host?: string;
   port: number;
 };
 
@@ -39,14 +40,14 @@ type HiddenAgentResultBody = Record<string, unknown>;
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
 
-export async function createBunHttpApp({ state, port }: BunHttpAppOptions): Promise<BunHttpApp> {
+export async function createBunHttpApp({ state, host = "127.0.0.1", port }: BunHttpAppOptions): Promise<BunHttpApp> {
   const fetchHandler = createFetchHandler(state);
   const bun = (globalThis as typeof globalThis & {
     Bun?: { serve?: (options: { hostname: string; port: number; fetch: (request: Request) => Promise<Response> | Response }) => { port: number; stop: () => void | Promise<void> } };
   }).Bun;
 
   if (bun?.serve) {
-    const server = bun.serve({ hostname: "127.0.0.1", port, fetch: fetchHandler });
+    const server = bun.serve({ hostname: host, port, fetch: fetchHandler });
     return {
       port: server.port,
       stop: async () => {
@@ -55,7 +56,7 @@ export async function createBunHttpApp({ state, port }: BunHttpAppOptions): Prom
     };
   }
 
-  return startNodeFallbackServer(fetchHandler, port);
+  return startNodeFallbackServer(fetchHandler, host, port);
 }
 
 export function createFetchHandler(state: BackendState) {
@@ -193,11 +194,11 @@ export function createFetchHandler(state: BackendState) {
   };
 }
 
-async function startNodeFallbackServer(fetchHandler: (request: Request) => Promise<Response>, port: number): Promise<BunHttpApp> {
+async function startNodeFallbackServer(fetchHandler: (request: Request) => Promise<Response>, host: string, port: number): Promise<BunHttpApp> {
   const server = http.createServer(async (incoming, outgoing) => {
     try {
       const body = await readNodeBody(incoming, JSON_BODY_LIMIT_BYTES);
-      const request = new Request(`http://127.0.0.1${incoming.url ?? "/"}`, {
+      const request = new Request(`http://${host}${incoming.url ?? "/"}`, {
         method: incoming.method ?? "GET",
         headers: incoming.headers as HeadersInit,
         body: body.length > 0 ? Buffer.from(body) : undefined,
@@ -216,7 +217,7 @@ async function startNodeFallbackServer(fetchHandler: (request: Request) => Promi
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => {
+    server.listen(port, host, () => {
       server.off("error", reject);
       resolve();
     });
