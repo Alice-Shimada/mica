@@ -266,6 +266,104 @@ describe("BackendState", () => {
     expect(state.notebooks.listLive()).toHaveLength(1);
   });
 
+  describe("per-client active notebook", () => {
+    it("stores per-client active notebook via setActiveNotebook", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const record = state.notebooks.upsertHeartbeat(heartbeat());
+      const clientSessionId = "mcp-client-abc";
+
+      state.setActiveNotebook(record.notebookId, clientSessionId);
+
+      expect(state.activeNotebookByClientSession.get(clientSessionId)).toBe(record.notebookId);
+    });
+
+    it("resolveNotebook prefers client-specific active notebook over global fallback", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const globalNotebook = state.notebooks.upsertHeartbeat(
+        heartbeat({ agentSessionId: "agent-global", frontendObjectKey: "fe-global", displayName: "global.nb", windowTitle: "global.nb" }),
+      );
+      const clientNotebook = state.notebooks.upsertHeartbeat(
+        heartbeat({ agentSessionId: "agent-client", frontendObjectKey: "fe-client", displayName: "client.nb", windowTitle: "client.nb" }),
+      );
+      const clientSessionId = "mcp-client-abc";
+
+      state.activeNotebookId = globalNotebook.notebookId;
+      state.setActiveNotebook(clientNotebook.notebookId, clientSessionId);
+
+      expect(state.resolveNotebook({}, clientSessionId)).toEqual({ ok: true, record: clientNotebook });
+      expect(state.resolveNotebook({})).toEqual({ ok: true, record: globalNotebook });
+    });
+
+    it("resolveNotebook falls back to global active notebook when client has no preference", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const record = state.notebooks.upsertHeartbeat(heartbeat());
+      state.activeNotebookId = record.notebookId;
+
+      expect(state.resolveNotebook({}, "mcp-client-xyz")).toEqual({ ok: true, record });
+    });
+
+    it("clears per-client active notebook when that notebook closes", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const record = state.notebooks.upsertHeartbeat(heartbeat());
+      const clientSessionId = "mcp-client-abc";
+
+      state.setActiveNotebook(record.notebookId, clientSessionId);
+      state.closeNotebook(record.notebookId, 2000);
+
+      expect(state.activeNotebookByClientSession.has(clientSessionId)).toBe(false);
+      expect(state.resolveNotebook({}, clientSessionId)).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    });
+
+    it("clears per-client active notebook when that notebook goes stale", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const record = state.notebooks.upsertHeartbeat(
+        heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }),
+      );
+      const clientSessionId = "mcp-client-abc";
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      state.setActiveNotebook(record.notebookId, clientSessionId);
+      state.sweepLiveness(5000);
+
+      expect(state.activeNotebookByClientSession.has(clientSessionId)).toBe(false);
+      expect(state.resolveNotebook({}, clientSessionId)).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
+    });
+
+    it("setActiveNotebook without clientSessionId sets the global active notebook", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const record = state.notebooks.upsertHeartbeat(heartbeat());
+
+      state.setActiveNotebook(record.notebookId);
+
+      expect(state.activeNotebookId).toBe(record.notebookId);
+    });
+
+    it("explicit notebookId selector overrides per-client active notebook", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const clientNotebook = state.notebooks.upsertHeartbeat(
+        heartbeat({ agentSessionId: "agent-client", frontendObjectKey: "fe-client", displayName: "client.nb", windowTitle: "client.nb" }),
+      );
+      const explicitNotebook = state.notebooks.upsertHeartbeat(
+        heartbeat({ agentSessionId: "agent-explicit", frontendObjectKey: "fe-explicit", displayName: "explicit.nb", windowTitle: "explicit.nb" }),
+      );
+      const clientSessionId = "mcp-client-abc";
+
+      state.setActiveNotebook(clientNotebook.notebookId, clientSessionId);
+
+      expect(state.resolveNotebook({ notebookId: explicitNotebook.notebookId }, clientSessionId)).toEqual({
+        ok: true,
+        record: explicitNotebook,
+      });
+    });
+  });
+
   it("ages out dead agents and stales their notebooks through a state sweep", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);

@@ -33,13 +33,13 @@ function makeNotebook(state: BackendState, overrides: Record<string, unknown> = 
 type ToolRegistration = {
   name: string;
   description: string;
-  handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>;
+  handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal; sessionId?: string }) => Promise<unknown>;
 };
 
 function registerTools(state: BackendState) {
   const registrations: ToolRegistration[] = [];
   const server = {
-    tool(name: string, description: string, _schema: unknown, handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>) {
+    tool(name: string, description: string, _schema: unknown, handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal; sessionId?: string }) => Promise<unknown>) {
       registrations.push({ name, description, handler });
     },
   };
@@ -851,6 +851,187 @@ describe("backend MCP tool registration", () => {
           structuredContent: expect.objectContaining({ ok: true }),
         });
       }
+    });
+  });
+
+  describe("per-client session id in tool extra", () => {
+    it("resolveToolTarget accepts clientSessionId and uses per-client active notebook", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+      const now = Date.now();
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+      state.agents.register({ agentSessionId: "agent-2", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+      const globalNotebook = state.notebooks.upsertHeartbeat({
+        agentSessionId: "agent-1",
+        frontendObjectKey: "fe-1",
+        displayName: "Global.nb",
+        windowTitle: "Global.nb",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        permissions: {
+          ReadNotebook: true,
+          InsertCell: true,
+          ModifyCell: true,
+          DeleteCell: true,
+          RunCell: true,
+          SaveNotebook: true,
+        },
+        seenAt: now,
+      });
+      const clientNotebook = state.notebooks.upsertHeartbeat({
+        agentSessionId: "agent-2",
+        frontendObjectKey: "fe-2",
+        displayName: "Client.nb",
+        windowTitle: "Client.nb",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        permissions: {
+          ReadNotebook: true,
+          InsertCell: true,
+          ModifyCell: true,
+          DeleteCell: true,
+          RunCell: true,
+          SaveNotebook: true,
+        },
+        seenAt: now,
+      });
+      const clientSessionId = "mcp-client-abc";
+
+      state.activeNotebookId = globalNotebook.notebookId;
+      state.setActiveNotebook(clientNotebook.notebookId, clientSessionId);
+
+      expect(resolveToolTarget(state, {}, { sessionId: clientSessionId })).toMatchObject({
+        agentSessionId: "agent-2",
+        notebook: expect.objectContaining({ notebookId: clientNotebook.notebookId }),
+      });
+      expect(resolveToolTarget(state, {})).toMatchObject({
+        agentSessionId: "agent-1",
+        notebook: expect.objectContaining({ notebookId: globalNotebook.notebookId }),
+      });
+    });
+
+    it("resolveToolTarget falls back to global active notebook when client has no preference", () => {
+      const state = makeState();
+      const notebook = makeNotebook(state);
+      state.activeNotebookId = notebook.notebookId;
+
+      expect(resolveToolTarget(state, {}, { sessionId: "mcp-client-xyz" })).toMatchObject({
+        agentSessionId: "agent-1",
+        notebook: expect.objectContaining({ notebookId: notebook.notebookId }),
+      });
+    });
+
+    it("mma_select_notebook with sessionId sets per-client active notebook", async () => {
+      const state = makeState();
+      const notebook = makeNotebook(state, { displayName: "Target.nb", windowTitle: "Target.nb" });
+      const clientSessionId = "mcp-client-abc";
+      const registrations = registerTools(state);
+
+      const select = registrationByName(registrations, "mma_select_notebook");
+      await select.handler({ displayName: "Target.nb" }, { sessionId: clientSessionId });
+
+      expect(state.activeNotebookByClientSession.get(clientSessionId)).toBe(notebook.notebookId);
+    });
+
+    it("mma_select_notebook with sessionId updates global activeNotebookId and returns it in structuredContent", async () => {
+      const state = makeState();
+      const notebook = makeNotebook(state, { displayName: "Target.nb", windowTitle: "Target.nb" });
+      const clientSessionId = "mcp-client-abc";
+      const registrations = registerTools(state);
+
+      const select = registrationByName(registrations, "mma_select_notebook");
+      const result = await select.handler({ displayName: "Target.nb" }, { sessionId: clientSessionId });
+
+      expect(state.activeNotebookId).toBe(notebook.notebookId);
+      expect(result).toMatchObject({
+        structuredContent: expect.objectContaining({ activeNotebookId: notebook.notebookId }),
+      });
+    });
+
+    it("mma_status with sessionId reports per-client active notebook, without sessionId reports global fallback", async () => {
+      const state = makeState();
+      const globalNotebook = makeNotebook(state, { displayName: "Global.nb", windowTitle: "Global.nb" });
+      const clientNotebook = makeNotebook(state, { displayName: "Client.nb", windowTitle: "Client.nb" });
+      const clientSessionId = "mcp-client-abc";
+
+      state.activeNotebookId = globalNotebook.notebookId;
+      state.setActiveNotebook(clientNotebook.notebookId, clientSessionId);
+
+      const registrations = registerTools(state);
+      const status = registrationByName(registrations, "mma_status");
+
+      const clientResult = await status.handler({}, { sessionId: clientSessionId });
+      expect(clientResult).toMatchObject({
+        structuredContent: expect.objectContaining({ activeNotebookId: clientNotebook.notebookId }),
+      });
+
+      const globalResult = await status.handler({});
+      expect(globalResult).toMatchObject({
+        structuredContent: expect.objectContaining({ activeNotebookId: globalNotebook.notebookId }),
+      });
+    });
+
+    it("tool handler extra carries sessionId for per-client notebook resolution", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const now = Date.now();
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+      state.agents.register({ agentSessionId: "agent-2", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+      const globalNotebook = state.notebooks.upsertHeartbeat({
+        agentSessionId: "agent-1",
+        frontendObjectKey: "fe-1",
+        displayName: "Global.nb",
+        windowTitle: "Global.nb",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        permissions: {
+          ReadNotebook: true,
+          InsertCell: true,
+          ModifyCell: true,
+          DeleteCell: true,
+          RunCell: true,
+          SaveNotebook: true,
+        },
+        seenAt: now,
+      });
+      const clientNotebook = state.notebooks.upsertHeartbeat({
+        agentSessionId: "agent-2",
+        frontendObjectKey: "fe-2",
+        displayName: "Client.nb",
+        windowTitle: "Client.nb",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        permissions: {
+          ReadNotebook: true,
+          InsertCell: true,
+          ModifyCell: true,
+          DeleteCell: true,
+          RunCell: true,
+          SaveNotebook: true,
+        },
+        seenAt: now,
+      });
+      const clientSessionId = "mcp-client-abc";
+
+      state.activeNotebookId = globalNotebook.notebookId;
+      state.setActiveNotebook(clientNotebook.notebookId, clientSessionId);
+
+      const registrations = registerTools(state);
+      const handler = registrationByName(registrations, "mma_list_cells").handler;
+
+      const pending = handler({}, { sessionId: clientSessionId });
+      const queued = state.queue.snapshot().queued[0];
+      if (!queued) throw new Error("expected queued request");
+
+      expect(queued).toMatchObject({
+        tool: "mma_list_cells",
+        targetNotebookId: clientNotebook.notebookId,
+        agentSessionId: "agent-2",
+      });
+
+      state.queue.resolve(queued.requestId, { cells: [] }, Date.now() + 1);
+      await expect(pending).resolves.toMatchObject({
+        structuredContent: expect.objectContaining({ ok: true }),
+      });
     });
   });
 

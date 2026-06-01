@@ -18,10 +18,19 @@ export class BackendState {
   readonly queue = new BackendQueue();
 
   activeNotebookId: string | undefined;
+  readonly activeNotebookByClientSession = new Map<string, string>();
 
   constructor(createNotebookId: () => string) {
     this.notebooks = new NotebookRegistry(createNotebookId);
     this.agents = new AgentRegistry();
+  }
+
+  setActiveNotebook(notebookId: string, clientSessionId?: string): void {
+    if (clientSessionId) {
+      this.activeNotebookByClientSession.set(clientSessionId, notebookId);
+    } else {
+      this.activeNotebookId = notebookId;
+    }
   }
 
   sweepLiveness(now: number = Date.now()): { offlineAgents: string[]; staleNotebooks: string[] } {
@@ -41,7 +50,7 @@ export class BackendState {
     return this.agents.hasLiveAgent() ? { ok: true } : { ok: false, error: "NO_LIVE_AGENT" };
   }
 
-  resolveNotebook(selector: NotebookSelector): NotebookResolution {
+  resolveNotebook(selector: NotebookSelector, clientSessionId?: string): NotebookResolution {
     if (selector.notebookId !== undefined) {
       const notebookId = selector.notebookId.trim();
       if (!notebookId) return { ok: false, error: "NOTEBOOK_NOT_FOUND" };
@@ -60,6 +69,13 @@ export class BackendState {
       const lookup = this.notebooks.findByDisplayName(displayName);
       if (lookup.ok) return { ok: true, record: lookup.record };
       return { ok: false, error: lookup.error, candidates: lookup.candidates };
+    }
+
+    if (clientSessionId) {
+      const clientActiveNotebookId = this.activeNotebookByClientSession.get(clientSessionId);
+      if (clientActiveNotebookId) {
+        return this.resolveNotebook({ notebookId: clientActiveNotebookId });
+      }
     }
 
     if (this.activeNotebookId) {
@@ -82,11 +98,18 @@ export class BackendState {
   }
 
   private clearInactiveActiveNotebook(): void {
-    if (!this.activeNotebookId) return;
+    if (this.activeNotebookId) {
+      const active = this.notebooks.get(this.activeNotebookId);
+      if (!active || active.closed || active.stale) {
+        this.activeNotebookId = undefined;
+      }
+    }
 
-    const active = this.notebooks.get(this.activeNotebookId);
-    if (!active || active.closed || active.stale) {
-      this.activeNotebookId = undefined;
+    for (const [clientSessionId, notebookId] of this.activeNotebookByClientSession) {
+      const record = this.notebooks.get(notebookId);
+      if (!record || record.closed || record.stale) {
+        this.activeNotebookByClientSession.delete(clientSessionId);
+      }
     }
   }
 }
