@@ -21,14 +21,7 @@ export class BackendState {
 
   constructor(createNotebookId: () => string) {
     this.notebooks = new NotebookRegistry(createNotebookId);
-    this.agents = new AgentRegistry({
-      onRetireAgents: (agentSessionIds, staleAt) => {
-        for (const agentSessionId of agentSessionIds) {
-          this.notebooks.markStaleByAgent(agentSessionId, staleAt);
-        }
-        this.clearInactiveActiveNotebook();
-      },
-    });
+    this.agents = new AgentRegistry();
   }
 
   sweepLiveness(now: number = Date.now()): { offlineAgents: string[]; staleNotebooks: string[] } {

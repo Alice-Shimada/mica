@@ -178,7 +178,7 @@ describe("BackendState", () => {
     expect(state.requireLiveAgent()).toEqual({ ok: true });
   });
 
-  it("retires older live agents and hides their notebooks when a new agent registers", () => {
+  it("keeps older live agent notebooks visible when a new agent registers", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);
 
@@ -187,12 +187,13 @@ describe("BackendState", () => {
 
     state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
 
-    expect(state.agents.get("agent-old")?.offline).toBe(true);
-    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
-    expect(state.notebooks.listLive()).toEqual([]);
+    expect(state.agents.get("agent-old")?.offline).toBe(false);
+    expect(state.agents.get("agent-old")?.retired).toBe(false);
+    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(false);
+    expect(state.notebooks.listLive()).toEqual([notebook]);
   });
 
-  it("does not let a superseded agent re-register and stale the current agent notebooks", () => {
+  it("re-registers one live agent without staling peer notebooks", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);
 
@@ -203,12 +204,12 @@ describe("BackendState", () => {
 
     state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 3000 });
 
-    expect(state.agents.get("agent-old")?.offline).toBe(true);
-    expect(state.agents.get("agent-old")?.retiredReason).toBe("superseded");
+    expect(state.agents.get("agent-old")?.offline).toBe(false);
+    expect(state.agents.get("agent-old")?.lastSeenAt).toBe(3000);
     expect(state.agents.get("agent-new")?.offline).toBe(false);
-    expect(state.notebooks.get(oldNotebook.notebookId)?.stale).toBe(true);
+    expect(state.notebooks.get(oldNotebook.notebookId)?.stale).toBe(false);
     expect(state.notebooks.get(newNotebook.notebookId)?.stale).toBe(false);
-    expect(state.notebooks.listLive()).toEqual([newNotebook]);
+    expect(state.notebooks.listLive()).toEqual([oldNotebook, newNotebook]);
   });
 
   it("does not revive a retired agent via heartbeat", () => {
@@ -217,7 +218,8 @@ describe("BackendState", () => {
 
     state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
     const staleNotebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-old", frontendObjectKey: "fe-old", displayName: "old.nb", windowTitle: "old.nb" }));
-    state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
+    state.agents.retire("agent-old", 2000, "no_live_notebooks");
+    state.notebooks.markStaleByAgent("agent-old", 2000);
 
     expect(state.agents.heartbeat("agent-old", 3000)).toBeUndefined();
     expect(state.agents.get("agent-old")?.offline).toBe(true);
@@ -225,7 +227,7 @@ describe("BackendState", () => {
     expect(state.notebooks.listLive()).toEqual([]);
   });
 
-  it("does not revive an offline agent via heartbeat after a new registration retires it", () => {
+  it("does not retire an offline agent when a new agent registers", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);
 
@@ -233,9 +235,9 @@ describe("BackendState", () => {
     state.agents.markOfflineOlderThan(5000, 1000);
     state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: 6000 });
 
-    expect(state.agents.heartbeat("agent-old", 7000)).toBeUndefined();
-    expect(state.agents.get("agent-old")?.retired).toBe(true);
+    expect(state.agents.get("agent-old")?.retired).toBe(false);
     expect(state.agents.get("agent-old")?.offline).toBe(true);
+    expect(state.agents.heartbeat("agent-old", 7000)).toMatchObject({ agentSessionId: "agent-old", offline: false });
   });
 
   it("revives an offline but not retired agent on heartbeat and accepts notebook heartbeats after revival", () => {

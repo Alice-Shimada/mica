@@ -7,37 +7,10 @@ export type AgentRegistration = {
   seenAt: number;
 };
 
-export type AgentRegistryCallbacks = {
-  onRetireAgents?: (agentSessionIds: string[], retiredAt: number) => void;
-};
-
 export class AgentRegistry {
   private readonly agents = new Map<string, AgentInfo>();
 
-  constructor(private readonly callbacks: AgentRegistryCallbacks = {}) {}
-
   register(input: AgentRegistration): AgentInfo {
-    const existing = this.agents.get(input.agentSessionId);
-    if (existing?.retired && existing.retiredReason === "superseded") {
-      return this.clone(existing);
-    }
-
-    const retiredAgents: string[] = [];
-
-    for (const agent of this.agents.values()) {
-      if (agent.agentSessionId === input.agentSessionId) continue;
-      if (agent.retired) continue;
-
-      this.agents.set(agent.agentSessionId, {
-        ...agent,
-        offline: true,
-        retired: true,
-        retiredReason: "superseded",
-        offlineAt: input.seenAt,
-      });
-      retiredAgents.push(agent.agentSessionId);
-    }
-
     const next: AgentInfo = {
       agentSessionId: input.agentSessionId,
       wolframVersion: input.wolframVersion,
@@ -50,10 +23,6 @@ export class AgentRegistry {
     };
 
     this.agents.set(input.agentSessionId, next);
-
-    if (retiredAgents.length > 0) {
-      this.callbacks.onRetireAgents?.(retiredAgents, input.seenAt);
-    }
 
     return this.clone(next);
   }

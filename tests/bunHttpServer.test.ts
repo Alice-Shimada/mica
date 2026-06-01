@@ -409,7 +409,7 @@ describe("Bun HTTP app", () => {
     await expect(heartbeatResponse.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT", reason: "no_live_notebooks" } });
   });
 
-  it("reports superseded retired agents distinctly from no-notebook retirements", async () => {
+  it("keeps both agents live when a second agent registers", async () => {
     const state = new BackendState(() => "notebook-1");
     const server = await createBunHttpApp({ state, port: 0 });
     servers.push(server);
@@ -433,11 +433,12 @@ describe("Bun HTTP app", () => {
       body: JSON.stringify({ agentSessionId: "agent-old", seenAt: 3000 }),
     });
 
-    expect(heartbeatResponse.status).toBe(404);
-    await expect(heartbeatResponse.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT", reason: "superseded" } });
+    expect(heartbeatResponse.status).toBe(200);
+    await expect(heartbeatResponse.json()).resolves.toMatchObject({ agent: { agentSessionId: "agent-old", offline: false, retired: false } });
+    expect(state.agents.get("agent-new")?.offline).toBe(false);
   });
 
-  it("rejects notebook heartbeat from a retired agent with 404 and keeps notebooks stale", async () => {
+  it("accepts notebook heartbeat from the first agent after another agent registers", async () => {
     const state = new BackendState(() => "notebook-1");
     const server = await createBunHttpApp({ state, port: 0 });
     servers.push(server);
@@ -472,7 +473,7 @@ describe("Bun HTTP app", () => {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         agentSessionId: "agent-old",
-        frontendObjectKey: "fe-old-2",
+        frontendObjectKey: "fe-old",
         displayName: "old.nb",
         windowTitle: "old.nb",
         wolframVersion: "13.3",
@@ -482,10 +483,10 @@ describe("Bun HTTP app", () => {
       }),
     });
 
-    expect(heartbeatResponse.status).toBe(404);
-    await expect(heartbeatResponse.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT" } });
-    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
-    expect(state.notebooks.listLive()).toEqual([]);
+    expect(heartbeatResponse.status).toBe(200);
+    await expect(heartbeatResponse.json()).resolves.toMatchObject({ notebook: { notebookId: notebook.notebookId, agentSessionId: "agent-old" } });
+    expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(false);
+    expect(state.notebooks.listLive()).toHaveLength(1);
   });
 
   it("rejects notebook heartbeat from a missing or offline agent with 404", async () => {
@@ -535,21 +536,22 @@ describe("Bun HTTP app", () => {
     expect(offline.status).toBe(404);
   });
 
-  it("rejects next-request for missing offline and retired agents without claiming work", async () => {
+  it("rejects next-request for missing and offline agents without claiming work", async () => {
     const state = new BackendState(() => "notebook-1");
     const now = Date.now();
     state.agents.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: now });
     state.queue.enqueue({ requestId: "r1", tool: "mma_list_cells", arguments: {}, targetNotebookId: "n1", agentSessionId: "agent-old", timeoutMs: 5000, createdAt: now });
     state.agents.markOfflineOlderThan(now + 5000, 1000);
     state.agents.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Windows", seenAt: now + 5000 });
+    expect(state.agents.get("agent-old")?.retired).toBe(false);
 
     const server = await createBunHttpApp({ state, port: 0 });
     servers.push(server);
     const base = `http://127.0.0.1:${server.port}`;
 
-    const retired = await fetch(`${base}/agents/agent-old/next-request`);
-    expect(retired.status).toBe(404);
-    await expect(retired.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT" } });
+    const offline = await fetch(`${base}/agents/agent-old/next-request`);
+    expect(offline.status).toBe(404);
+    await expect(offline.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT" } });
     expect(state.queue.get("r1")?.status).not.toBe("running");
 
     const missing = await fetch(`${base}/agents/missing/next-request`);

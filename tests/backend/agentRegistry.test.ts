@@ -60,26 +60,28 @@ describe("AgentRegistry", () => {
     expect(registry.get("agent-2")?.offline).toBe(false);
   });
 
-  it("marks older live agents offline when a new session registers", () => {
+  it("keeps existing live agents online when a new session registers", () => {
     const registry = new AgentRegistry();
     registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
     registry.register({ agentSessionId: "agent-2", wolframVersion: "13.3", platform: "Linux", seenAt: 3000 });
 
-    expect(registry.get("agent-1")?.offline).toBe(true);
-    expect(registry.get("agent-1")?.offlineAt).toBe(3000);
+    expect(registry.get("agent-1")?.offline).toBe(false);
+    expect(registry.get("agent-1")?.retired).toBe(false);
+    expect(registry.get("agent-1")?.offlineAt).toBeUndefined();
     expect(registry.get("agent-2")?.offline).toBe(false);
+    expect(registry.hasLiveAgent()).toBe(true);
   });
 
-  it("does not revive a superseded agent through explicit re-registration", () => {
+  it("updates one live agent through re-registration without retiring peers", () => {
     const registry = new AgentRegistry();
     registry.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
     registry.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Linux", seenAt: 2000 });
 
     registry.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 3000 });
 
-    expect(registry.get("agent-old")?.offline).toBe(true);
-    expect(registry.get("agent-old")?.lastSeenAt).toBe(1000);
-    expect(registry.get("agent-old")?.retiredReason).toBe("superseded");
+    expect(registry.get("agent-old")?.offline).toBe(false);
+    expect(registry.get("agent-old")?.lastSeenAt).toBe(3000);
+    expect(registry.get("agent-old")?.retired).toBe(false);
     expect(registry.get("agent-new")?.offline).toBe(false);
     expect(registry.get("agent-new")?.retired).toBe(false);
   });
@@ -105,25 +107,41 @@ describe("AgentRegistry", () => {
     expect(registry.get("agent-empty")?.retiredReason).toBe("no_live_notebooks");
   });
 
+  it("revives the same retired agent through explicit re-registration", () => {
+    const registry = new AgentRegistry();
+    registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    registry.retire("agent-1", 2000, "no_live_notebooks");
+
+    registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 3000 });
+
+    expect(registry.get("agent-1")).toMatchObject({
+      agentSessionId: "agent-1",
+      lastSeenAt: 3000,
+      offline: false,
+      retired: false,
+      retiredReason: undefined,
+    });
+  });
+
   it("does not revive a retired agent via heartbeat", () => {
     const registry = new AgentRegistry();
     registry.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
-    registry.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Linux", seenAt: 2000 });
+    registry.retire("agent-old", 2000, "no_live_notebooks");
 
     expect(registry.heartbeat("agent-old", 3000)).toBeUndefined();
     expect(registry.get("agent-old")?.offline).toBe(true);
     expect(registry.get("agent-old")?.offlineAt).toBe(2000);
   });
 
-  it("retires offline agents too when a new session registers", () => {
+  it("does not retire offline agents when a new session registers", () => {
     const registry = new AgentRegistry();
     registry.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
     registry.markOfflineOlderThan(5000, 1000);
 
     registry.register({ agentSessionId: "agent-new", wolframVersion: "13.3", platform: "Linux", seenAt: 6000 });
 
-    expect(registry.heartbeat("agent-old", 7000)).toBeUndefined();
-    expect(registry.get("agent-old")?.retired).toBe(true);
+    expect(registry.get("agent-old")?.retired).toBe(false);
     expect(registry.get("agent-old")?.offline).toBe(true);
+    expect(registry.heartbeat("agent-old", 7000)).toMatchObject({ agentSessionId: "agent-old", offline: false, retired: false });
   });
 });

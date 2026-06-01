@@ -90,6 +90,33 @@ describe("backend MCP tool resolution", () => {
     });
   });
 
+  it("resolves a first agent's notebook after a second agent registers", () => {
+    let nextNotebookId = 0;
+    const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+    const now = Date.now();
+    state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+    const firstNotebook = makeNotebook(state, {
+      agentSessionId: "agent-1",
+      frontendObjectKey: "fe-1",
+      displayName: "First.nb",
+      windowTitle: "First.nb",
+      seenAt: now,
+    });
+    state.agents.register({ agentSessionId: "agent-2", wolframVersion: "13.3", platform: "Windows", seenAt: now + 1 });
+    makeNotebook(state, {
+      agentSessionId: "agent-2",
+      frontendObjectKey: "fe-2",
+      displayName: "Second.nb",
+      windowTitle: "Second.nb",
+      seenAt: now + 1,
+    });
+
+    expect(resolveToolTarget(state, { notebookId: firstNotebook.notebookId })).toMatchObject({
+      agentSessionId: "agent-1",
+      notebook: expect.objectContaining({ notebookId: firstNotebook.notebookId }),
+    });
+  });
+
   it("fails when the resolved notebook's agent is offline even if another agent is live", () => {
     const state = new BackendState(() => "notebook-1");
     const now = Date.now();
@@ -670,7 +697,7 @@ describe("backend MCP tool registration", () => {
       });
       state.activeNotebookId = notebook.notebookId;
 
-      const pending = registrationByName(registerTools(state), "mma_list_cells").handler({});
+      const pending = registrationByName(registerTools(state), "mma_list_cells").handler({ notebookId: notebook.notebookId });
       expect(state.queue.snapshot().queued).toHaveLength(0);
       await expect(pending).resolves.toMatchObject({
         isError: true,
