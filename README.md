@@ -218,6 +218,10 @@ See also:
 - `mma_save_notebook` is disabled by default in the installer permission block.
 - The Node/Bun process does not directly edit `.nb` files.
 
+## Explicit Notebook Targeting
+
+Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`) for all mutating MCP tools (`mma_insert_cell`, `mma_modify_cell`, `mma_delete_cell`, `mma_run_cell`, `mma_abort_evaluation`, `mma_save_notebook`). Read-only notebook tools (`mma_list_cells`, `mma_read_cell`, `mma_get_cell_output`) continue to use the active notebook, and `mma_symbol_lookup` is unaffected because it does not target a notebook. When strict targeting is enabled and no selector is provided, the tool returns error code `EXPLICIT_NOTEBOOK_REQUIRED` with `retryable: false`. Default behavior (no env var or any value other than `"1"`) is unchanged.
+
 ## Known Limitations
 
 - Cancellation is best-effort when the Wolfram kernel is already busy.

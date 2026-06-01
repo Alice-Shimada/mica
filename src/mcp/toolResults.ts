@@ -33,6 +33,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     message: "More than one live notebook matches that display name.",
     retryable: false,
   },
+  EXPLICIT_NOTEBOOK_REQUIRED: {
+    code: "EXPLICIT_NOTEBOOK_REQUIRED",
+    message: "Strict targeting is enabled. Provide notebookId or displayName explicitly for mutating operations.",
+    retryable: false,
+  },
   NOTEBOOK_CLOSED: {
     code: "NOTEBOOK_CLOSED",
     message: "The selected Mathematica notebook has been closed.",

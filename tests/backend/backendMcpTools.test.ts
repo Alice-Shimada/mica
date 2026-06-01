@@ -671,6 +671,189 @@ describe("backend MCP tool registration", () => {
     expect(state.queue.snapshot().queued).toHaveLength(0);
   });
 
+  describe("MICA_STRICT_TARGETING", () => {
+    const MUTATING_TOOLS = [
+      "mma_insert_cell",
+      "mma_modify_cell",
+      "mma_delete_cell",
+      "mma_run_cell",
+      "mma_abort_evaluation",
+      "mma_save_notebook",
+    ] as const;
+
+    const READ_ONLY_TOOLS = [
+      "mma_list_cells",
+      "mma_read_cell",
+      "mma_get_cell_output",
+      "mma_symbol_lookup",
+    ] as const;
+
+    function enableStrictTargeting() {
+      process.env.MICA_STRICT_TARGETING = "1";
+    }
+
+    function disableStrictTargeting() {
+      delete process.env.MICA_STRICT_TARGETING;
+    }
+
+    it("rejects each mutating tool with no selector in strict mode, no queue entry", async () => {
+      enableStrictTargeting();
+      try {
+        for (const tool of MUTATING_TOOLS) {
+          const state = makeState();
+          const notebook = makeNotebook(state);
+          state.activeNotebookId = notebook.notebookId;
+          const handler = registrationByName(registerTools(state), tool).handler;
+
+          const args: Record<string, unknown> = tool === "mma_insert_cell" || tool === "mma_modify_cell"
+            ? { content: "1+1" }
+            : tool === "mma_run_cell" || tool === "mma_delete_cell"
+              ? { cellId: "cell-1" }
+              : {};
+
+          await expect(handler(args)).resolves.toMatchObject({
+            isError: true,
+            structuredContent: {
+              ok: false,
+              error: expect.objectContaining({
+                code: "EXPLICIT_NOTEBOOK_REQUIRED",
+                tool,
+                retryable: false,
+              }),
+            },
+          });
+          expect(state.queue.snapshot().queued).toHaveLength(0);
+        }
+      } finally {
+        disableStrictTargeting();
+      }
+    });
+
+    it("allows mutating tool in strict mode when notebookId is provided and queues normally", async () => {
+      enableStrictTargeting();
+      try {
+        for (const tool of MUTATING_TOOLS) {
+          const state = makeState();
+          const notebook = makeNotebook(state);
+          const handler = registrationByName(registerTools(state), tool).handler;
+
+          const args: Record<string, unknown> = { notebookId: notebook.notebookId };
+          if (tool === "mma_insert_cell" || tool === "mma_modify_cell") {
+            args.content = "1+1";
+          }
+          if (tool === "mma_run_cell" || tool === "mma_delete_cell" || tool === "mma_modify_cell") {
+            args.cellId = "cell-1";
+          }
+
+          const pending = handler(args);
+          expect(state.queue.snapshot().queued).toHaveLength(1);
+          expect(state.queue.snapshot().queued[0]).toMatchObject({
+            tool,
+            targetNotebookId: notebook.notebookId,
+          });
+
+          const requestId = state.queue.snapshot().queued[0]!.requestId;
+          state.queue.resolve(requestId, { tool }, Date.now() + 1);
+          await expect(pending).resolves.toMatchObject({
+            structuredContent: expect.objectContaining({ ok: true }),
+          });
+        }
+      } finally {
+        disableStrictTargeting();
+      }
+    });
+
+    it("allows mutating tool in strict mode when displayName is provided", async () => {
+      enableStrictTargeting();
+      try {
+        const state = makeState();
+        const notebook = makeNotebook(state, { displayName: "Target.nb", windowTitle: "Target.nb" });
+        const handler = registrationByName(registerTools(state), "mma_run_cell").handler;
+
+        const pending = handler({ displayName: "Target.nb", cellId: "cell-1" });
+        expect(state.queue.snapshot().queued).toHaveLength(1);
+        expect(state.queue.snapshot().queued[0]).toMatchObject({
+          tool: "mma_run_cell",
+          targetNotebookId: notebook.notebookId,
+        });
+
+        const requestId = state.queue.snapshot().queued[0]!.requestId;
+        state.queue.resolve(requestId, { tool: "mma_run_cell" }, Date.now() + 1);
+        await expect(pending).resolves.toMatchObject({
+          structuredContent: expect.objectContaining({ ok: true }),
+        });
+      } finally {
+        disableStrictTargeting();
+      }
+    });
+
+    it("allows read-only tools to use active notebook without selector in strict mode", async () => {
+      enableStrictTargeting();
+      try {
+        for (const tool of READ_ONLY_TOOLS) {
+          const state = makeState();
+          const notebook = makeNotebook(state);
+          state.activeNotebookId = notebook.notebookId;
+          const handler = registrationByName(registerTools(state), tool).handler;
+
+          const args: Record<string, unknown> = {};
+          if (tool === "mma_read_cell" || tool === "mma_get_cell_output") {
+            args.cellId = "cell-1";
+          }
+          if (tool === "mma_symbol_lookup") {
+            args.query = "Plot";
+          }
+
+          const pending = handler(args);
+          expect(state.queue.snapshot().queued).toHaveLength(1);
+          expect(state.queue.snapshot().queued[0]).toMatchObject({
+            tool,
+            targetNotebookId: notebook.notebookId,
+          });
+
+          const requestId = state.queue.snapshot().queued[0]!.requestId;
+          state.queue.resolve(requestId, { tool }, Date.now() + 1);
+          await expect(pending).resolves.toMatchObject({
+            structuredContent: expect.objectContaining({ ok: true }),
+          });
+        }
+      } finally {
+        disableStrictTargeting();
+      }
+    });
+
+    it("allows mutating tools to use active notebook without selector in default mode", async () => {
+      disableStrictTargeting();
+      for (const tool of MUTATING_TOOLS) {
+        const state = makeState();
+        const notebook = makeNotebook(state);
+        state.activeNotebookId = notebook.notebookId;
+        const handler = registrationByName(registerTools(state), tool).handler;
+
+        const args: Record<string, unknown> = {};
+        if (tool === "mma_insert_cell" || tool === "mma_modify_cell") {
+          args.content = "1+1";
+        }
+        if (tool === "mma_run_cell" || tool === "mma_delete_cell" || tool === "mma_modify_cell") {
+          args.cellId = "cell-1";
+        }
+
+        const pending = handler(args);
+        expect(state.queue.snapshot().queued).toHaveLength(1);
+        expect(state.queue.snapshot().queued[0]).toMatchObject({
+          tool,
+          targetNotebookId: notebook.notebookId,
+        });
+
+        const requestId = state.queue.snapshot().queued[0]!.requestId;
+        state.queue.resolve(requestId, { tool }, Date.now() + 1);
+        await expect(pending).resolves.toMatchObject({
+          structuredContent: expect.objectContaining({ ok: true }),
+        });
+      }
+    });
+  });
+
   it("sweeps stale notebooks before enqueuing notebook operations", async () => {
     vi.useFakeTimers();
     vi.spyOn(Date, "now").mockReturnValue(4_000);

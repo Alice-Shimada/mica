@@ -76,6 +76,13 @@ describe("MICA MCP prompts", () => {
     expect(text).toContain("ok: false");
   });
 
+  it("instructs agents to pass notebookId explicitly for mutating operations", () => {
+    const prompt = collectPromptRegistrations()[0]!.handler();
+    const text = (prompt as { messages: Array<{ content: { text: string } }> }).messages[0]!.content.text;
+
+    expect(text).toContain("For all mutating operations, pass notebookId explicitly");
+  });
+
   it("puts the same guide into MCP server initialization instructions", () => {
     const server = createMicaMcpServer("mica-test");
 

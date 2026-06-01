@@ -132,6 +132,7 @@ type QueuedNotebookTool = {
   permission: keyof NotebookRecord["permissions"];
   timeoutMs: (args: Record<string, unknown>) => number;
   extraGuidance?: string;
+  requiresExplicitTarget?: boolean;
 };
 
 function registerQueuedNotebookTool(server: McpServer, state: BackendState, config: QueuedNotebookTool): void {
@@ -142,6 +143,13 @@ function registerQueuedNotebookTool(server: McpServer, state: BackendState, conf
     async (args, extra) => {
       const recordArgs = args as Record<string, unknown>;
       return withToolErrors({ tool: config.name, args: recordArgs }, async () => {
+        if (process.env.MICA_STRICT_TARGETING === "1" && config.requiresExplicitTarget) {
+          const hasNotebookId = typeof recordArgs.notebookId === "string" && recordArgs.notebookId.trim().length > 0;
+          const hasDisplayName = typeof recordArgs.displayName === "string" && recordArgs.displayName.trim().length > 0;
+          if (!hasNotebookId && !hasDisplayName) {
+            throw new Error("EXPLICIT_NOTEBOOK_REQUIRED");
+          }
+        }
         const target = resolveToolTarget(state, recordArgs);
         ensurePermission(target.notebook, config.name, config.permission);
         return queueNotebookOperation(state, target, config.name, recordArgs, config.timeoutMs(recordArgs), extra as ToolHandlerExtra);
@@ -218,6 +226,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
       permission: "InsertCell",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.insertCell,
       extraGuidance: INSERT_ANCHOR_GUIDANCE,
+      requiresExplicitTarget: true,
     },
     {
       name: "mma_modify_cell",
@@ -225,6 +234,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
       schema: modifyCellSchema.shape,
       permission: "ModifyCell",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+      requiresExplicitTarget: true,
     },
     {
       name: "mma_delete_cell",
@@ -232,6 +242,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
       schema: deleteCellSchema.shape,
       permission: "DeleteCell",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+      requiresExplicitTarget: true,
     },
     {
       name: "mma_run_cell",
@@ -242,6 +253,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
         const timeoutSec = typeof args.timeoutSec === "number" ? args.timeoutSec : 120;
         return timeoutSec * 1000;
       },
+      requiresExplicitTarget: true,
     },
     {
       name: "mma_abort_evaluation",
@@ -249,6 +261,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
       schema: abortEvaluationSchema.shape,
       permission: "RunCell",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+      requiresExplicitTarget: true,
     },
     {
       name: "mma_get_cell_output",
@@ -263,6 +276,7 @@ export function registerBackendMcpTools(server: McpServer, state: BackendState):
       schema: saveNotebookSchema.shape,
       permission: "SaveNotebook",
       timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+      requiresExplicitTarget: true,
     },
   ];
 
