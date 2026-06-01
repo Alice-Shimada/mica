@@ -86,6 +86,7 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
     registerMicaPrompts(server);
 
     console.error(`Bun HTTP server listening on http://${config.host}:${httpApp.port}`);
+    console.error(`Dashboard: http://${config.host}:${httpApp.port}/#token=${config.authToken}`);
     if (!bridgeOnly) {
       console.error("Bun MCP mode enabled; connecting stdio transport.");
       await server.connect(createTransport());

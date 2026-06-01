@@ -5,7 +5,7 @@ export type MicaSessionFile = {
   host: string;
   port: number;
   baseUrl: string;
-  authToken: string | undefined;
+  authToken: string;
   pid: number;
   version: string;
   status: "running";

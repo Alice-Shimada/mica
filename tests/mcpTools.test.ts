@@ -15,7 +15,7 @@ const runtimeConfig = {
   host: "127.0.0.1",
   preferredPort: 19791,
   sessionFile: "test-session.json",
-  authToken: undefined,
+  authToken: "test-token",
   bridgeOnly: false,
 };
 

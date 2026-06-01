@@ -20,6 +20,7 @@ export function renderDashboard(): string {
   <body>
     <main>
       <h1>MMA Agent Bridge</h1>
+      <p id="auth-message" class="muted"></p>
       <div class="grid">
         <section>
           <h2>Notebook Registry</h2>
@@ -37,14 +38,29 @@ export function renderDashboard(): string {
     </main>
     <script>
       let refreshInFlight = false;
+      const token = new URLSearchParams(location.hash.slice(1)).get('token');
+
+      function dashboardHeaders() {
+        return token ? { authorization: \`Bearer \${token}\` } : {};
+      }
+
+      function requireDashboardToken() {
+        if (token) return true;
+        const message = 'Missing dashboard token. Open the dashboard URL printed by the MICA server.';
+        document.getElementById('auth-message').textContent = message;
+        document.getElementById('diagnostics').textContent = message;
+        document.getElementById('notebooks').textContent = message;
+        return false;
+      }
 
       async function refreshDashboard() {
+        if (!requireDashboardToken()) return;
         if (refreshInFlight) return;
         refreshInFlight = true;
 
         const [statusResponse, notebooksResponse] = await Promise.all([
-          fetch('/status'),
-          fetch('/notebooks'),
+          fetch('/status', { headers: dashboardHeaders() }),
+          fetch('/notebooks', { headers: dashboardHeaders() }),
         ]);
 
         const status = await statusResponse.json();

@@ -70,7 +70,7 @@ npm run start:mcp
 Dashboard:
 
 ```text
-http://127.0.0.1:19791/
+Use the `Dashboard: http://127.0.0.1:<port>/#token=<token>` URL printed by the MICA server.
 ```
 
 The installer edits only your per-user Wolfram `Kernel/init.m`, creates a timestamped backup, and prints MCP client config snippets. It does not edit system Wolfram files and does not edit MCP client configs for you.
@@ -204,7 +204,10 @@ Live smoke test:
 ## Security Model
 
 - MICA binds its HTTP bridge to `127.0.0.1`.
-- The MVP does not include HTTP auth or a remote access mode.
+- MICA writes a local session file with a generated auth token and requires `Authorization: Bearer <token>` for protocol endpoints.
+- The dashboard token is carried in the URL fragment (`#token=...`), not in the HTTP request path.
+- The dashboard URL, including the local bearer token, is printed to the server startup log for the current user session.
+- MICA does not include a remote access mode.
 - There is no arbitrary shell tool and no direct raw-eval MCP endpoint.
 - Notebook mutation goes through Wolfram FrontEnd APIs and explicit permissions.
 - `mma_save_notebook` is disabled by default in the installer permission block.

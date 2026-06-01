@@ -36,6 +36,9 @@ describe("Bun HTTP app", () => {
     expect(html).toContain("Diagnostics");
     expect(html).toContain("/status");
     expect(html).toContain("/notebooks");
+    expect(html).toContain("Missing dashboard token. Open the dashboard URL printed by the MICA server.");
+    expect(html).toContain("new URLSearchParams(location.hash.slice(1)).get('token')");
+    expect(html).toContain("authorization: `Bearer ${token}`");
     expect(html).toContain("refreshInFlight");
     expect(html).toContain("setTimeout");
   });

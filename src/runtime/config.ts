@@ -5,7 +5,7 @@ export type MicaRuntimeConfig = {
   host: string;
   preferredPort: number;
   sessionFile: string;
-  authToken: string | undefined;
+  authToken: string;
   bridgeOnly: boolean;
 };
 
@@ -36,7 +36,7 @@ export function loadRuntimeConfig(options: LoadRuntimeConfigOptions = {}): MicaR
     host: cli.host ?? env.MICA_HOST ?? DEFAULT_HOST,
     preferredPort: cli.port ?? parseOptionalPort(env.MICA_PORT, "MICA_PORT") ?? DEFAULT_PORT,
     sessionFile: cli.sessionFile ?? env.MICA_SESSION_FILE ?? defaultSessionFile(env),
-    authToken: cli.token ?? nonEmptyString(env.MICA_TOKEN),
+    authToken: cli.token ?? nonEmptyString(env.MICA_TOKEN) ?? (options.randomToken ?? generateAuthToken)(),
     bridgeOnly: cli.bridgeOnly,
   };
 }

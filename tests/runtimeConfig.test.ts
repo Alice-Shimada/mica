@@ -4,13 +4,13 @@ import { defaultSessionFile, generateAuthToken, loadRuntimeConfig } from "../src
 
 describe("runtime config", () => {
   it("uses safe local defaults", () => {
-    const config = loadRuntimeConfig({ env: { HOME: "/home/alice" }, argv: [] });
+    const config = loadRuntimeConfig({ env: { HOME: "/home/alice" }, argv: [], randomToken: () => "generated-token" });
 
     expect(config).toEqual({
       host: "127.0.0.1",
       preferredPort: 19791,
       sessionFile: path.join("/home/alice", ".mica", "session.json"),
-      authToken: undefined,
+      authToken: "generated-token",
       bridgeOnly: false,
     });
   });
@@ -39,9 +39,9 @@ describe("runtime config", () => {
   });
 
   it("treats an empty env token as unconfigured", () => {
-    const config = loadRuntimeConfig({ env: { HOME: "/home/alice", MICA_TOKEN: "" }, argv: [] });
+    const config = loadRuntimeConfig({ env: { HOME: "/home/alice", MICA_TOKEN: "" }, argv: [], randomToken: () => "generated-token" });
 
-    expect(config.authToken).toBeUndefined();
+    expect(config.authToken).toBe("generated-token");
   });
 
   it("lets CLI args override env values", () => {

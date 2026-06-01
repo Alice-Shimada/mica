@@ -18,34 +18,40 @@ describe("Bun runtime session file", () => {
     const stop = vi.fn().mockResolvedValue(undefined);
     const connect = vi.fn().mockResolvedValue(undefined);
     const createHttpApp = vi.fn().mockResolvedValue({ port: 45678, stop });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    const runtime = await startBunRuntime({
-      runtimeConfig: {
+    try {
+      const runtime = await startBunRuntime({
+        runtimeConfig: {
+          host: "127.0.0.1",
+          preferredPort: 0,
+          sessionFile,
+          authToken: "test-token",
+          bridgeOnly: false,
+        },
+        createHttpApp,
+        createMcpServer: () => ({ tool: vi.fn(), prompt: vi.fn(), connect } as never),
+        version: "9.8.7-test",
+      });
+
+      const session = JSON.parse(await readFile(sessionFile, "utf8"));
+
+      expect(session).toMatchObject({
         host: "127.0.0.1",
-        preferredPort: 0,
-        sessionFile,
+        port: 45678,
+        baseUrl: "http://127.0.0.1:45678",
         authToken: "test-token",
-        bridgeOnly: false,
-      },
-      createHttpApp,
-      createMcpServer: () => ({ tool: vi.fn(), prompt: vi.fn(), connect } as never),
-      version: "9.8.7-test",
-    });
+        pid: process.pid,
+        version: "9.8.7-test",
+        status: "running",
+      });
+      expect(typeof session.updatedAt).toBe("string");
+      expect(createHttpApp).toHaveBeenCalledWith(expect.objectContaining({ authToken: "test-token" }));
+      expect(consoleError).toHaveBeenCalledWith("Dashboard: http://127.0.0.1:45678/#token=test-token");
 
-    const session = JSON.parse(await readFile(sessionFile, "utf8"));
-
-    expect(session).toMatchObject({
-      host: "127.0.0.1",
-      port: 45678,
-      baseUrl: "http://127.0.0.1:45678",
-      authToken: "test-token",
-      pid: process.pid,
-      version: "9.8.7-test",
-      status: "running",
-    });
-    expect(typeof session.updatedAt).toBe("string");
-    expect(createHttpApp).toHaveBeenCalledWith(expect.objectContaining({ authToken: "test-token" }));
-
-    await runtime.stop();
+      await runtime.stop();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });

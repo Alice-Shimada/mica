@@ -66,6 +66,10 @@ export function createFetchHandler(state: BackendState, options: { authToken?: s
     const url = new URL(request.url);
 
     try {
+      if (request.method === "GET" && url.pathname === "/") {
+        return htmlResponse(renderDashboard());
+      }
+
       if (!isAuthorized(request.headers.get("authorization"), options.authToken)) {
         return jsonResponse({ error: { code: "UNAUTHORIZED" } }, 401);
       }
@@ -73,10 +77,6 @@ export function createFetchHandler(state: BackendState, options: { authToken?: s
       if (request.method === "GET" && url.pathname === "/status") {
         state.sweepLiveness(Date.now());
         return jsonResponse({ server: "running", agents: state.agents.list(), notebooks: state.notebooks.listLive() });
-      }
-
-      if (request.method === "GET" && url.pathname === "/") {
-        return htmlResponse(renderDashboard());
       }
 
       if (request.method === "POST" && url.pathname === "/agents/register") {
