@@ -211,7 +211,7 @@ describe("backend MCP tool registration", () => {
     expect(descriptions).toContain("Use the latest notebookId");
     expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
     expect(descriptions).toContain("Do not use detached wolframscript");
-    expect(descriptions).toContain("Restart opencode or the mma MCP server");
+    expect(descriptions).toContain("Restart your MCP client or the MICA MCP server");
   });
 
   it("returns immediate JSON text for status and notebook selection", async () => {

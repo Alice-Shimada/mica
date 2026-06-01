@@ -54,7 +54,7 @@ async function main(): Promise<void> {
   await server.connect(new StdioServerTransport());
 
   // server.connect() completes stdio transport setup; the HTTP bridge keeps
-  // the process alive while opencode owns the MCP server. Signal handlers above
+  // the process alive while the MCP client owns the MCP server. Signal handlers above
   // perform cleanup on explicit process termination.
 }
 

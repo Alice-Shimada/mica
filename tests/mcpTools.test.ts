@@ -248,7 +248,7 @@ describe("MCP tool bridge readiness", () => {
     expect(insertDescription).toContain('afterCellId="__end__"');
     expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
     expect(descriptions).toContain("Do not use detached wolframscript");
-    expect(descriptions).toContain("Restart opencode or the mma MCP server");
+    expect(descriptions).toContain("Restart your MCP client or the MICA MCP server");
   });
 
   it("fails immediately when the Palette is not connected", () => {
