@@ -388,6 +388,54 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source.slice(refreshStart, readStart)).not.toContain("CellArtifactScan");
   });
 
+  it("applies maxBytes truncation metadata to read-cell and get-output responses", () => {
+    const readStart = source.indexOf("ReadCellById[args_Association]");
+    const outputStart = source.indexOf("GetCellOutputById[args_Association]", readStart);
+    const makeCellStart = source.indexOf("MakeCellExpression[content_String", outputStart);
+    const truncateStart = source.indexOf("TruncateStringToUtf8Bytes[text_String, maxBytes_Integer]");
+    const payloadStart = source.indexOf("TruncatePayloadFields[content_String", truncateStart);
+    const payloadEnd = source.indexOf("CellEvaluationTaggingPath[cellId_String]", payloadStart);
+    const readBody = source.slice(readStart, outputStart);
+    const outputBody = source.slice(outputStart, makeCellStart);
+    const truncateBody = source.slice(truncateStart, payloadStart);
+    const payloadBody = source.slice(payloadStart, payloadEnd);
+    const requiredSnippets = [
+      "$DefaultMaxCellPayloadBytes = 262144",
+      "$MaxCellPayloadBytes = 1024 * 1024",
+      "CellPayloadMaxBytes[args_Association]",
+      "Utf8PrefixByteLength[bytes_List, maxBytes_Integer]",
+      'Lookup[args, "maxBytes", $DefaultMaxCellPayloadBytes]',
+      "TruncateStringToUtf8Bytes[text_String, maxBytes_Integer]",
+      'ToCharacterCode[text, "UTF8"]',
+      "TruncatePayloadFields[content_String, outputs_List, messages_List, maxBytes_Integer, includeContentQ_]",
+      '"truncated" -> anyTruncated',
+      '"originalByteLength" -> totalOriginalByteLength',
+      '"returnedByteLength" -> totalReturnedByteLength',
+    ];
+
+    for (const snippet of requiredSnippets) {
+      expect(source).toContain(snippet);
+    }
+
+    expect(readStart).toBeGreaterThanOrEqual(0);
+    expect(outputStart).toBeGreaterThan(readStart);
+    expect(makeCellStart).toBeGreaterThan(outputStart);
+    expect(truncateBody).toContain("safeLength = Utf8PrefixByteLength[originalBytes, maxBytes]");
+    expect(truncateBody).toContain('ByteArrayToString[ByteArray[Take[originalBytes, safeLength]], "UTF8"]');
+    expect(truncateBody).not.toContain("AppendTo[chars");
+    expect(truncateBody).not.toContain("ToCharacterCode[char");
+    expect(payloadBody).toContain("Do[");
+    expect(payloadBody).not.toContain("processString /@");
+    expect(readBody).toContain("maxBytes = CellPayloadMaxBytes[args]");
+    expect(readBody).toContain('payload = TruncatePayloadFields[CellContentString[cell], artifacts["outputs"], artifacts["messages"], maxBytes, True]');
+    expect(readBody).toContain("Join[");
+    expect(readBody).toContain("payload");
+    expect(outputBody).toContain("maxBytes = CellPayloadMaxBytes[args]");
+    expect(outputBody).toContain('payload = TruncatePayloadFields["", artifacts["outputs"], artifacts["messages"], maxBytes, False]');
+    expect(outputBody).toContain("Join[");
+    expect(outputBody).not.toContain('"content" ->');
+  });
+
   it("prefers grace before artifact-driven completion", () => {
     const graceIndex = source.indexOf('NumberQ[$RunningStartedAt] && (AbsoluteTime[] - $RunningStartedAt < $RunningStatusGraceSeconds)');
     const outputIndex = source.indexOf('sameRunningCellQ && (evaluationCompleteQ || hasFinalOutputQ)');

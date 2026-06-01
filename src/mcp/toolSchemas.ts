@@ -7,6 +7,7 @@ const notebookSelectorFields = {
   notebookId: notebookIdField.optional(),
   displayName: z.string().min(1).optional()
 };
+const maxBytesField = z.number().int().positive().max(1024 * 1024);
 
 export const selectNotebookSchema = z.object({
   notebookId: notebookIdField.optional(),
@@ -15,7 +16,8 @@ export const selectNotebookSchema = z.object({
 
 export const readCellSchema = z.object({
   ...notebookSelectorFields,
-  cellId: z.string().min(1)
+  cellId: z.string().min(1),
+  maxBytes: maxBytesField.optional()
 }).strict();
 
 export const insertCellSchema = z.object({
@@ -48,7 +50,8 @@ export const abortEvaluationSchema = z.object({
 
 export const getCellOutputSchema = z.object({
   ...notebookSelectorFields,
-  cellId: z.string().min(1)
+  cellId: z.string().min(1),
+  maxBytes: maxBytesField.optional()
 }).strict();
 
 export const listCellsSchema = z.object({

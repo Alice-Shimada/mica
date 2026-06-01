@@ -44,6 +44,8 @@ $LastStatus = <||>;
 $LastError = None;
 $PollingInProgress = False;
 $MaxArtifactScanCells = 20;
+$DefaultMaxCellPayloadBytes = 262144;
+$MaxCellPayloadBytes = 1024 * 1024;
 $BridgeHTTPTimeoutSeconds = 10;
 $BridgeHTTPRetryCount = 3;
 $BridgeHTTPRetryDelaySeconds = 0.25;
@@ -797,6 +799,70 @@ CellGeneratedBoundaryQ[style_String] := MemberQ[{"Input", "Code", "Text", "Secti
 
 CellArtifactStyleQ[style_String] := MemberQ[{"Output", "Print", "Message"}, style];
 
+CellPayloadMaxBytes[args_Association] := Module[{value = Lookup[args, "maxBytes", $DefaultMaxCellPayloadBytes]},
+  If[IntegerQ[value] && value > 0 && value <= $MaxCellPayloadBytes, value, $DefaultMaxCellPayloadBytes]
+];
+
+Utf8LeadByteLength[byte_Integer] := Which[
+  byte < 128, 1,
+  byte < 224, 2,
+  byte < 240, 3,
+  byte < 248, 4,
+  True, 1
+];
+
+Utf8PrefixByteLength[bytes_List, maxBytes_Integer] := Module[{safeLength = Min[maxBytes, Length[bytes]], start, lead, expected},
+  If[safeLength <= 0, Return[0]];
+  start = safeLength;
+  While[start > 1 && bytes[[start]] >= 128 && bytes[[start]] <= 191, start--];
+  lead = bytes[[start]];
+  expected = Utf8LeadByteLength[lead];
+  If[safeLength - start + 1 >= expected, safeLength, Max[0, start - 1]]
+];
+
+TruncateStringToUtf8Bytes[text_String, maxBytes_Integer] := Module[{originalBytes, originalByteLength, safeLength, returnedText},
+  originalBytes = ToCharacterCode[text, "UTF8"];
+  originalByteLength = Length[originalBytes];
+  If[maxBytes <= 0,
+    Return[<|"value" -> "", "truncated" -> (originalByteLength > 0), "originalByteLength" -> originalByteLength, "returnedByteLength" -> 0|>]
+  ];
+  If[originalByteLength <= maxBytes,
+    Return[<|"value" -> text, "truncated" -> False, "originalByteLength" -> originalByteLength, "returnedByteLength" -> originalByteLength|>]
+  ];
+  safeLength = Utf8PrefixByteLength[originalBytes, maxBytes];
+  returnedText = If[safeLength > 0, ByteArrayToString[ByteArray[Take[originalBytes, safeLength]], "UTF8"], ""];
+  <|"value" -> returnedText, "truncated" -> True, "originalByteLength" -> originalByteLength, "returnedByteLength" -> safeLength|>
+];
+
+TruncatePayloadFields[content_String, outputs_List, messages_List, maxBytes_Integer, includeContentQ_] := Module[{remainingByteLength = maxBytes, totalOriginalByteLength = 0, totalReturnedByteLength = 0, anyTruncated = False, truncatedContent = "", truncatedOutputs = {}, truncatedMessages = {}, processString, output, message},
+  processString[text_String] := Module[{item = TruncateStringToUtf8Bytes[text, remainingByteLength]},
+    totalOriginalByteLength += item["originalByteLength"];
+    totalReturnedByteLength += item["returnedByteLength"];
+    anyTruncated = anyTruncated || TrueQ[item["truncated"]];
+    remainingByteLength = Max[0, remainingByteLength - item["returnedByteLength"]];
+    item["value"]
+  ];
+  If[TrueQ[includeContentQ], truncatedContent = processString[content]];
+  Do[
+    AppendTo[truncatedOutputs, processString[If[StringQ[output], output, ToString[output, InputForm]]]],
+    {output, outputs}
+  ];
+  Do[
+    AppendTo[truncatedMessages, processString[If[StringQ[message], message, ToString[message, InputForm]]]],
+    {message, messages}
+  ];
+  Join[
+    If[TrueQ[includeContentQ], <|"content" -> truncatedContent|>, <||>],
+    <|
+      "outputs" -> truncatedOutputs,
+      "messages" -> truncatedMessages,
+      "truncated" -> anyTruncated,
+      "originalByteLength" -> totalOriginalByteLength,
+      "returnedByteLength" -> totalReturnedByteLength
+    |>
+  ]
+];
+
 CellEvaluationTaggingPath[cellId_String] := {TaggingRules, "MMAAgentBridge", "evaluations", cellId, "complete"};
 
 MarkCellEvaluationComplete[cellId_String] := Quiet @ Check[
@@ -994,7 +1060,7 @@ RefreshCellMap[notebookId_String] := Module[{record, nb, cells, idByCell, previo
   payload
 ];
 
-ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell},
+ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell, maxBytes, payload},
   If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1004,19 +1070,18 @@ ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell},
   If[StringLength[cellId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "cellId is required."|>]]];
   cell = Lookup[Lookup[record, "cellMap", <||>], cellId, Missing["NotFound"]];
   If[MissingQ[cell], Return[Failure["BAD_REQUEST", <|"message" -> "Requested cell was not found."|>]]];
-  With[{notebook = Lookup[record, "notebook", None], artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]]},
-  <|
-    "cellId" -> cellId,
-    "style" -> CellStyleName[cell],
-    "content" -> CellContentString[cell],
-    "outputs" -> artifacts["outputs"],
-    "messages" -> artifacts["messages"],
-    "status" -> artifacts["status"]
-  |>
+  maxBytes = CellPayloadMaxBytes[args];
+  With[{artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]]},
+    payload = TruncatePayloadFields[CellContentString[cell], artifacts["outputs"], artifacts["messages"], maxBytes, True];
+    Join[
+      <|"cellId" -> cellId, "style" -> CellStyleName[cell]|>,
+      payload,
+      <|"status" -> artifacts["status"]|>
+    ]
   ]
 ];
 
-GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell, artifacts},
+GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell, artifacts, maxBytes, payload},
   If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1026,13 +1091,14 @@ GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell,
   If[StringLength[cellId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "cellId is required."|>]]];
   cell = Lookup[Lookup[record, "cellMap", <||>], cellId, Missing["NotFound"]];
   If[MissingQ[cell], Return[Failure["BAD_REQUEST", <|"message" -> "Requested cell was not found."|>]]];
+  maxBytes = CellPayloadMaxBytes[args];
   artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]];
-  <|
-    "cellId" -> cellId,
-    "outputs" -> artifacts["outputs"],
-    "messages" -> artifacts["messages"],
-    "status" -> artifacts["status"]
-  |>
+  payload = TruncatePayloadFields["", artifacts["outputs"], artifacts["messages"], maxBytes, False];
+  Join[
+    <|"cellId" -> cellId|>,
+    payload,
+    <|"status" -> artifacts["status"]|>
+  ]
 ];
 
 MakeCellExpression[content_String, style_String] := Module[{cellStyle = If[StringQ[style] && StringLength[style] > 0, style, "Input"]},

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { z, type ZodRawShape } from "zod";
 import { BackendState } from "../../src/backend/backendState.js";
 import { registerBackendMcpTools, resolveToolTarget } from "../../src/mcp/backendTools.js";
 
@@ -33,14 +34,15 @@ function makeNotebook(state: BackendState, overrides: Record<string, unknown> = 
 type ToolRegistration = {
   name: string;
   description: string;
+  schema: Record<string, unknown>;
   handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal; sessionId?: string }) => Promise<unknown>;
 };
 
 function registerTools(state: BackendState) {
   const registrations: ToolRegistration[] = [];
   const server = {
-    tool(name: string, description: string, _schema: unknown, handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal; sessionId?: string }) => Promise<unknown>) {
-      registrations.push({ name, description, handler });
+    tool(name: string, description: string, schema: Record<string, unknown>, handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal; sessionId?: string }) => Promise<unknown>) {
+      registrations.push({ name, description, schema, handler });
     },
   };
 
@@ -212,6 +214,40 @@ describe("backend MCP tool registration", () => {
     expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
     expect(descriptions).toContain("Do not use detached wolframscript");
     expect(descriptions).toContain("Restart your MCP client or the MICA MCP server");
+  });
+
+  it("registers maxBytes for cell read/output tools and forwards it to the hidden agent", async () => {
+    const cases = [
+      { tool: "mma_read_cell", args: { cellId: "cell-1", maxBytes: 65_536 } },
+      { tool: "mma_get_cell_output", args: { cellId: "cell-1", maxBytes: 32_768 } },
+    ];
+
+    for (const testCase of cases) {
+      const state = makeState();
+      const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });
+      state.activeNotebookId = notebook.notebookId;
+      const registration = registrationByName(registerTools(state), testCase.tool);
+      const schema = z.object(registration.schema as ZodRawShape).strict();
+
+      expect(schema.safeParse(testCase.args).success).toBe(true);
+      expect(schema.safeParse({ ...testCase.args, maxBytes: 0 }).success).toBe(false);
+      expect(schema.safeParse({ ...testCase.args, maxBytes: 1024 * 1024 + 1 }).success).toBe(false);
+
+      const pending = registration.handler(testCase.args);
+      const queued = state.queue.snapshot().queued[0];
+      if (!queued) throw new Error("expected queued request");
+
+      expect(queued).toMatchObject({
+        tool: testCase.tool,
+        targetNotebookId: notebook.notebookId,
+        arguments: expect.objectContaining(testCase.args),
+      });
+
+      state.queue.resolve(queued.requestId, { tool: testCase.tool }, Date.now() + 1);
+      await expect(pending).resolves.toMatchObject({
+        structuredContent: expect.objectContaining({ ok: true }),
+      });
+    }
   });
 
   it("returns immediate JSON text for status and notebook selection", async () => {

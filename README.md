@@ -133,6 +133,8 @@ All MCP tools return JSON text plus `structuredContent`.
 { "ok": true, "result": "..." }
 ```
 
+`mma_read_cell` and `mma_get_cell_output` truncate large cell content, outputs, and messages by default to keep MCP responses bounded. Pass `maxBytes` (positive integer, up to 1 MiB) to request a different payload budget shared across content, outputs, and messages in that response. Truncated responses include `truncated`, `originalByteLength`, and `returnedByteLength` metadata.
+
 Expected failures are structured and set the MCP `isError` flag:
 
 ```json
