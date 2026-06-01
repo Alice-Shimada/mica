@@ -46,7 +46,7 @@ The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evalua
 
 | Requirement | Notes |
 | --- | --- |
-| Wolfram Desktop / Mathematica | 14.1+ recommended for the current control-kernel flow. Headless Wolfram Engine is not supported for live notebook control. |
+| Wolfram Desktop / Mathematica | 14.1+ supported. 13.x / 14.0 experimental (may work but not formally tested). Headless Wolfram Engine is not supported for live notebook control. |
 | Node.js | 20 or newer. |
 | Bun | Optional. Used for development hot-reload (`npm run dev:mcp`). Production path uses Node. |
 | MCP client | Codex, Claude Desktop, Cursor, or any stdio MCP client. |

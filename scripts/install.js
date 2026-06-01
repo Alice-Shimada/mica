@@ -401,6 +401,15 @@ export function renderMcpSnippets(
   ].join("\n");
 }
 
+export function renderVersionSupport() {
+  return [
+    "Version support:",
+    "  Supported: Wolfram Desktop / Mathematica 14.1+",
+    "  Experimental: Mathematica 13.x / 14.0",
+    "  Unsupported: Headless Wolfram Engine for live notebook control",
+  ].join("\n");
+}
+
 export function runInstaller(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.help) return helpText();
@@ -455,6 +464,10 @@ export function runInstaller(argv = process.argv.slice(2)) {
   lines.push(
     summarizeContentChange(before, change.content, change.removed)
   );
+
+  if (!options.uninstall) {
+    lines.push(renderVersionSupport());
+  }
 
   if (!options.dryRun && change.changed) {
     mkdirSync(kernelDir, { recursive: true });

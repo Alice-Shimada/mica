@@ -406,6 +406,9 @@ describe("installer CLI filesystem behavior", () => {
     );
     expect(output).toContain("Bridge blocks to remove: 0");
     expect(output).toContain("MCP config snippets");
+    expect(output).toContain("14.1+");
+    expect(output).toContain("Experimental");
+    expect(output).toContain("Headless");
     expect(existsSync(path.join(userBase, "Kernel", "init.m"))).toBe(false);
   });
 
@@ -434,6 +437,9 @@ describe("installer CLI filesystem behavior", () => {
     );
     expect(firstOutput).toContain("Restart Wolfram Desktop");
     expect(firstOutput).toContain("MCP config snippets");
+    expect(firstOutput).toContain("14.1+");
+    expect(firstOutput).toContain("Experimental");
+    expect(firstOutput).toContain("Headless");
     expect(firstContent).toContain('Print["keep me"]');
     expect(firstContent).toContain(installer.CONTROL_BEGIN);
     expect(backupFiles.length).toBeGreaterThanOrEqual(1);
