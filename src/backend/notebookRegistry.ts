@@ -33,7 +33,11 @@ export class NotebookRegistry {
       createdAt: existing?.createdAt ?? input.seenAt,
       lastSeenAt: input.seenAt,
       closed: false,
+      degradedAt: undefined,
+      degraded: false,
+      offlineAt: undefined,
       stale: false,
+      status: "live",
     };
 
     this.records.set(notebookId, record);
@@ -86,19 +90,40 @@ export class NotebookRegistry {
     this.records.set(notebookId, {
       ...record,
       closed: true,
+      degraded: false,
+      degradedAt: undefined,
+      offlineAt: undefined,
       stale: false,
+      status: "closed",
       lastSeenAt: closedAt,
     });
   }
 
-  markStaleByAgent(agentSessionId: string, staleAt: number): void {
+  markDegradedByAgent(agentSessionId: string, degradedAt: number): void {
     for (const record of this.records.values()) {
-      if (record.agentSessionId !== agentSessionId || record.closed) continue;
+      if (record.agentSessionId !== agentSessionId || record.closed || record.stale || record.degraded) continue;
 
       this.records.set(record.notebookId, {
         ...record,
+        degraded: true,
+        degradedAt,
+        offlineAt: undefined,
+        status: "degraded",
+      });
+    }
+  }
+
+  markStaleByAgent(agentSessionId: string, staleAt: number): void {
+    for (const record of this.records.values()) {
+      if (record.agentSessionId !== agentSessionId || record.closed || record.stale) continue;
+
+      this.records.set(record.notebookId, {
+        ...record,
+        degraded: false,
+        degradedAt: undefined,
+        offlineAt: staleAt,
         stale: true,
-        lastSeenAt: staleAt,
+        status: "offline",
       });
     }
   }

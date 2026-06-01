@@ -241,7 +241,7 @@ describe("backend MCP tool registration", () => {
   });
 
   it("sweeps stale notebooks before status and list results", async () => {
-    vi.spyOn(Date, "now").mockReturnValue(4_000);
+    vi.spyOn(Date, "now").mockReturnValue(31_000);
     try {
       const state = new BackendState(() => "notebook-1");
       state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 0 });
@@ -1037,10 +1037,10 @@ describe("backend MCP tool registration", () => {
 
   it("sweeps stale notebooks before enqueuing notebook operations", async () => {
     vi.useFakeTimers();
-    vi.spyOn(Date, "now").mockReturnValue(4_000);
+    vi.spyOn(Date, "now").mockReturnValue(31_000);
     try {
       const state = new BackendState(() => "notebook-1");
-      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 4_000 });
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 31_000 });
       state.agents.register({ agentSessionId: "agent-2", wolframVersion: "13.3", platform: "Windows", seenAt: 0 });
       const notebook = state.notebooks.upsertHeartbeat({
         agentSessionId: "agent-2",
@@ -1079,5 +1079,124 @@ describe("backend MCP tool registration", () => {
       vi.useRealTimers();
       vi.restoreAllMocks();
     }
+  });
+
+  describe("Phase 8.1 degraded tool operations", () => {
+    it("includes degraded agents and notebooks in status and list at 10s gap", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(11_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+        const notebook = makeNotebook(state, { seenAt: 1000 });
+        state.activeNotebookId = notebook.notebookId;
+        const registrations = registerTools(state);
+
+        const status = await registrations[0]!.handler({});
+        expect(status).toMatchObject({
+          structuredContent: expect.objectContaining({
+            agents: expect.arrayContaining([
+              expect.objectContaining({ agentSessionId: "agent-1", status: "degraded" }),
+            ]),
+            notebooks: expect.arrayContaining([
+              expect.objectContaining({ notebookId: notebook.notebookId, status: "degraded" }),
+            ]),
+          }),
+        });
+
+        const list = await registrations[1]!.handler({});
+        expect(list).toMatchObject({
+          structuredContent: expect.objectContaining({
+            notebooks: expect.arrayContaining([
+              expect.objectContaining({ notebookId: notebook.notebookId, status: "degraded" }),
+            ]),
+          }),
+        });
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("allows queued tool operations against degraded notebooks", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(11_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+        const notebook = makeNotebook(state, { seenAt: 1000 });
+        state.activeNotebookId = notebook.notebookId;
+
+        state.agents.markDegradedOlderThan(11_000, 10_000);
+        state.notebooks.markDegradedByAgent("agent-1", 11_000);
+
+        const registrations = registerTools(state);
+        const pending = registrationByName(registrations, "mma_list_cells").handler({});
+
+        expect(state.queue.snapshot().queued).toHaveLength(1);
+        const requestId = state.queue.snapshot().queued[0]!.requestId;
+        state.queue.resolve(requestId, { cells: [] }, 11_001);
+        await expect(pending).resolves.toMatchObject({
+          structuredContent: expect.objectContaining({ ok: true }),
+        });
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("rejects queued tool operations against offline notebooks at 30s", async () => {
+      vi.spyOn(Date, "now").mockReturnValue(31_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+        const notebook = makeNotebook(state, { seenAt: 1000 });
+        state.activeNotebookId = notebook.notebookId;
+
+        state.agents.markOfflineOlderThan(31_000, 30_000);
+        state.notebooks.markStaleByAgent("agent-1", 31_000);
+
+        const registrations = registerTools(state);
+        await expect(registrationByName(registrations, "mma_list_cells").handler({})).resolves.toMatchObject({
+          isError: true,
+          structuredContent: {
+            ok: false,
+            error: expect.objectContaining({
+              code: expect.stringMatching(/NO_LIVE_AGENT|NOTEBOOK_STALE/),
+            }),
+          },
+        });
+        expect(state.queue.snapshot().queued).toHaveLength(0);
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it("resolveToolTarget succeeds for degraded agent notebooks", () => {
+      const state = new BackendState(() => "notebook-1");
+      const now = Date.now();
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: now });
+      const notebook = state.notebooks.upsertHeartbeat({
+        agentSessionId: "agent-1",
+        frontendObjectKey: "fe-1",
+        displayName: "Shared.nb",
+        windowTitle: "Shared.nb",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        permissions: {
+          ReadNotebook: true,
+          InsertCell: true,
+          ModifyCell: true,
+          DeleteCell: true,
+          RunCell: true,
+          SaveNotebook: true,
+        },
+        seenAt: now,
+      });
+
+      state.agents.markDegradedOlderThan(now + 10_001, 10_000);
+      state.notebooks.markDegradedByAgent("agent-1", now + 10_001);
+
+      expect(resolveToolTarget(state, { notebookId: notebook.notebookId })).toMatchObject({
+        agentSessionId: "agent-1",
+        notebook: expect.objectContaining({ notebookId: notebook.notebookId, status: "degraded" }),
+      });
+    });
   });
 });

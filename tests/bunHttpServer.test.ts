@@ -564,10 +564,10 @@ describe("Bun HTTP app", () => {
 
   it("sweeps before next-request and does not claim if the agent just went stale", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(10_000);
+    vi.setSystemTime(31_000);
     try {
       const state = new BackendState(() => "notebook-1");
-      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 6_000 });
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
       state.queue.enqueue({
         requestId: "r1",
         tool: "mma_list_cells",
@@ -575,7 +575,7 @@ describe("Bun HTTP app", () => {
         targetNotebookId: "n1",
         agentSessionId: "agent-1",
         timeoutMs: 5000,
-        createdAt: 10_000,
+        createdAt: 31_000,
       });
 
       const server = await createBunHttpApp({ state, port: 0 });
@@ -592,7 +592,7 @@ describe("Bun HTTP app", () => {
 
   it("ages out stale agents and notebooks before status and claim paths", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(5_000);
+    vi.setSystemTime(31_000);
     try {
       const state = new BackendState(() => "notebook-1");
       state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
@@ -1064,5 +1064,149 @@ describe("Bun HTTP app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ accepted: false, late: true });
     expect(state.queue.get("r1")).toMatchObject({ status: "cancelled" });
+  });
+
+  describe("Phase 8.1 degraded HTTP endpoints", () => {
+    it("dashboard HTML mentions degraded agent status", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const server = await createBunHttpApp({ state, port: 0 });
+      servers.push(server);
+
+      const response = await fetch(`http://127.0.0.1:${server.port}/`);
+      const html = await response.text();
+
+      expect(html).toContain("degraded");
+    });
+
+    it("shows degraded agents and notebooks in /status and /notebooks at 10s gap", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(11_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
+        const notebook = state.notebooks.upsertHeartbeat({
+          agentSessionId: "agent-1",
+          frontendObjectKey: "fe-1",
+          displayName: "demo.nb",
+          windowTitle: "demo.nb",
+          wolframVersion: "13.3",
+          platform: "Windows",
+          permissions,
+          seenAt: 1_000,
+        });
+        state.activeNotebookId = notebook.notebookId;
+
+        const server = await createBunHttpApp({ state, port: 0 });
+        servers.push(server);
+        const base = `http://127.0.0.1:${server.port}`;
+
+        const statusResponse = await fetch(`${base}/status`);
+        expect(statusResponse.status).toBe(200);
+        const statusBody = await statusResponse.json();
+        const agent = statusBody.agents.find((a: { agentSessionId: string }) => a.agentSessionId === "agent-1");
+        expect(agent?.status).toBe("degraded");
+        expect(agent?.degraded).toBe(true);
+
+        const notebooksResponse = await fetch(`${base}/notebooks`);
+        expect(notebooksResponse.status).toBe(200);
+        const notebooksBody = await notebooksResponse.json();
+        expect(notebooksBody.notebooks).toHaveLength(1);
+        expect(notebooksBody.notebooks[0]?.status).toBe("degraded");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("allows next-request claim for degraded agents", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(11_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
+        state.queue.enqueue({
+          requestId: "r1",
+          tool: "mma_list_cells",
+          arguments: {},
+          targetNotebookId: "n1",
+          agentSessionId: "agent-1",
+          timeoutMs: 5000,
+          createdAt: 11_000,
+        });
+
+        const server = await createBunHttpApp({ state, port: 0 });
+        servers.push(server);
+
+        const response = await fetch(`http://127.0.0.1:${server.port}/agents/agent-1/next-request`);
+        expect(response.status).toBe(200);
+        await expect(response.json()).resolves.toEqual({
+          request: expect.objectContaining({ requestId: "r1" }),
+          cancelRequests: [],
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("rejects next-request for offline agents at 30s", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(31_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
+        state.queue.enqueue({
+          requestId: "r1",
+          tool: "mma_list_cells",
+          arguments: {},
+          targetNotebookId: "n1",
+          agentSessionId: "agent-1",
+          timeoutMs: 5000,
+          createdAt: 31_000,
+        });
+
+        const server = await createBunHttpApp({ state, port: 0 });
+        servers.push(server);
+
+        const response = await fetch(`http://127.0.0.1:${server.port}/agents/agent-1/next-request`);
+        expect(response.status).toBe(404);
+        await expect(response.json()).resolves.toMatchObject({ error: { code: "NO_LIVE_AGENT" } });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("accepts notebook heartbeat from degraded agent", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(11_000);
+      try {
+        const state = new BackendState(() => "notebook-1");
+        state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1_000 });
+
+        const server = await createBunHttpApp({ state, port: 0 });
+        servers.push(server);
+        const base = `http://127.0.0.1:${server.port}`;
+
+        const heartbeatResponse = await fetch(`${base}/notebooks/heartbeat`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            agentSessionId: "agent-1",
+            frontendObjectKey: "fe-1",
+            displayName: "demo.nb",
+            windowTitle: "demo.nb",
+            wolframVersion: "13.3",
+            platform: "Windows",
+            permissions,
+            seenAt: 11_000,
+          }),
+        });
+
+        expect(heartbeatResponse.status).toBe(200);
+        await expect(heartbeatResponse.json()).resolves.toMatchObject({
+          notebook: expect.objectContaining({ agentSessionId: "agent-1" }),
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

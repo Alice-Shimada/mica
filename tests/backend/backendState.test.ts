@@ -246,10 +246,10 @@ describe("BackendState", () => {
 
     state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
     const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", displayName: "foo.nb", windowTitle: "foo.nb", notebookPath: "C:/tmp/foo.nb", savedPath: "C:/tmp/foo.nb" }));
-    state.sweepLiveness(5000);
+    state.sweepLiveness(31_000);
 
     expect(state.agents.get("agent-1")?.offline).toBe(true);
-    expect(state.agents.heartbeat("agent-1", 6000)).toBeTruthy();
+    expect(state.agents.heartbeat("agent-1", 32_000)).toBeTruthy();
 
     const revivedNotebook = state.notebooks.upsertHeartbeat(heartbeat({
       agentSessionId: "agent-1",
@@ -258,7 +258,7 @@ describe("BackendState", () => {
       windowTitle: "foo.nb",
       notebookPath: "C:/tmp/foo.nb",
       savedPath: "C:/tmp/foo.nb",
-      seenAt: 7000,
+      seenAt: 33_000,
     }));
 
     expect(revivedNotebook.notebookId).toBe(notebook.notebookId);
@@ -328,7 +328,7 @@ describe("BackendState", () => {
 
       state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
       state.setActiveNotebook(record.notebookId, clientSessionId);
-      state.sweepLiveness(5000);
+      state.sweepLiveness(31_000);
 
       expect(state.activeNotebookByClientSession.has(clientSessionId)).toBe(false);
       expect(state.resolveNotebook({}, clientSessionId)).toEqual({ ok: false, error: "NOTEBOOK_NOT_FOUND" });
@@ -364,7 +364,7 @@ describe("BackendState", () => {
     });
   });
 
-  it("ages out dead agents and stales their notebooks through a state sweep", () => {
+  it("ages out offline agents and stales their notebooks through a state sweep", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);
 
@@ -374,8 +374,94 @@ describe("BackendState", () => {
     expect(state.sweepLiveness(1000 + 2999)).toEqual({ offlineAgents: [], staleNotebooks: [] });
     expect(state.agents.get("agent-old")?.offline).toBe(false);
 
-    expect(state.sweepLiveness(1000 + 3000)).toEqual({ offlineAgents: ["agent-old"], staleNotebooks: [notebook.notebookId] });
+    expect(state.sweepLiveness(1000 + 30_000)).toEqual({ offlineAgents: ["agent-old"], staleNotebooks: [notebook.notebookId] });
     expect(state.agents.get("agent-old")?.offline).toBe(true);
     expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
+  });
+
+  describe("Phase 8.1 degraded sweep", () => {
+    it("keeps agents live at 3s gap and does not stale notebooks", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }));
+
+      const result = state.sweepLiveness(4000);
+      expect(result.offlineAgents).toEqual([]);
+      expect(state.agents.get("agent-1")?.status).toBe("live");
+      expect(state.agents.get("agent-1")?.offline).toBe(false);
+      expect(state.notebooks.get(notebook.notebookId)?.status).toBe("live");
+    });
+
+    it("marks agents and notebooks degraded at 10s gap", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }));
+
+      const result = state.sweepLiveness(11_000);
+      expect(result.offlineAgents).toEqual([]);
+      expect(state.agents.get("agent-1")?.status).toBe("degraded");
+      expect(state.agents.get("agent-1")?.degraded).toBe(true);
+      expect(state.agents.get("agent-1")?.offline).toBe(false);
+      expect(state.notebooks.get(notebook.notebookId)?.status).toBe("degraded");
+      expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(false);
+      expect(state.notebooks.listLive()).toHaveLength(1);
+    });
+
+    it("marks agents offline and notebooks stale at 30s gap", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }));
+
+      const result = state.sweepLiveness(31_000);
+      expect(result.offlineAgents).toEqual(["agent-1"]);
+      expect(result.staleNotebooks).toEqual([notebook.notebookId]);
+      expect(state.agents.get("agent-1")?.status).toBe("offline");
+      expect(state.agents.get("agent-1")?.offline).toBe(true);
+      expect(state.notebooks.get(notebook.notebookId)?.status).toBe("offline");
+      expect(state.notebooks.get(notebook.notebookId)?.stale).toBe(true);
+    });
+
+    it("preserves active notebook during degraded state and clears it when offline", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }));
+      state.activeNotebookId = notebook.notebookId;
+
+      state.sweepLiveness(11_000);
+      expect(state.activeNotebookId).toBe(notebook.notebookId);
+
+      state.sweepLiveness(31_000);
+      expect(state.activeNotebookId).toBeUndefined();
+    });
+
+    it("resolveNotebook succeeds for degraded notebooks and fails for offline notebooks", () => {
+      let nextNotebookId = 0;
+      const state = new BackendState(() => `notebook-${++nextNotebookId}`);
+
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const notebook = state.notebooks.upsertHeartbeat(heartbeat({ agentSessionId: "agent-1", frontendObjectKey: "fe-1", seenAt: 1000 }));
+
+      state.sweepLiveness(11_000);
+      expect(state.resolveNotebook({ notebookId: notebook.notebookId })).toEqual({ ok: true, record: expect.objectContaining({ status: "degraded" }) });
+
+      state.sweepLiveness(31_000);
+      expect(state.resolveNotebook({ notebookId: notebook.notebookId })).toEqual({ ok: false, error: "NOTEBOOK_STALE" });
+    });
+
+    it("requireLiveAgent returns ok for degraded agents", () => {
+      const state = new BackendState(() => "notebook-1");
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      state.agents.markDegradedOlderThan(11_000, 10_000);
+
+      expect(state.requireLiveAgent()).toEqual({ ok: true });
+    });
   });
 });

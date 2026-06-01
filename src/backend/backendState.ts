@@ -34,7 +34,12 @@ export class BackendState {
   }
 
   sweepLiveness(now: number = Date.now()): { offlineAgents: string[]; staleNotebooks: string[] } {
-    const offlineAgents = this.agents.markOfflineOlderThan(now, DEFAULT_TIMEOUTS_MS.agentHeartbeatGrace);
+    const degradedAgents = this.agents.markDegradedOlderThan(now, DEFAULT_TIMEOUTS_MS.agentHeartbeatDegradedMs);
+    for (const agentSessionId of degradedAgents) {
+      this.notebooks.markDegradedByAgent(agentSessionId, now);
+    }
+
+    const offlineAgents = this.agents.markOfflineOlderThan(now, DEFAULT_TIMEOUTS_MS.agentHeartbeatOfflineMs);
     for (const agentSessionId of offlineAgents) {
       this.notebooks.markStaleByAgent(agentSessionId, now);
     }

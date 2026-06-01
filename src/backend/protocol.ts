@@ -9,8 +9,8 @@ export const DEFAULT_TIMEOUTS_MS = {
   insertCell: 60_000,
   runCell: 120_000,
   symbolLookup: 30_000,
-  agentHeartbeatGrace: 3000,
-  staleTransition: 10_000
+  agentHeartbeatDegradedMs: 10_000,
+  agentHeartbeatOfflineMs: 30_000,
 } as const;
 
 export type CanonicalErrorCode =
@@ -34,16 +34,21 @@ export type Permissions = {
 };
 
 export type AgentRetiredReason = "superseded" | "no_live_notebooks";
+export type AgentStatus = "live" | "degraded" | "offline" | "retired";
+export type NotebookStatus = "live" | "degraded" | "offline" | "closed";
 
 export type AgentInfo = {
   agentSessionId: string;
   wolframVersion: string;
   platform: string;
   lastSeenAt: number;
+  degradedAt?: number;
+  degraded: boolean;
   offlineAt?: number;
   offline: boolean;
   retired: boolean;
   retiredReason?: AgentRetiredReason;
+  status: AgentStatus;
   machineId?: string;
   frontendSessionId?: string;
   wolframProcessId?: string;
@@ -68,7 +73,11 @@ export type NotebookRecord = NotebookHeartbeat & {
   createdAt: number;
   lastSeenAt: number;
   closed: boolean;
+  degradedAt?: number;
+  degraded: boolean;
+  offlineAt?: number;
   stale: boolean;
+  status: NotebookStatus;
 };
 
 export type BackendRequestStatus =

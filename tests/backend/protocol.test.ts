@@ -11,8 +11,8 @@ describe("backend protocol", () => {
     expect(DEFAULT_TIMEOUTS_MS.insertCell).toBe(60_000);
     expect(DEFAULT_TIMEOUTS_MS.runCell).toBe(120_000);
     expect(DEFAULT_TIMEOUTS_MS.symbolLookup).toBe(30_000);
-    expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatGrace).toBe(3000);
-    expect(DEFAULT_TIMEOUTS_MS.staleTransition).toBe(10_000);
+    expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatDegradedMs).toBe(10_000);
+    expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatOfflineMs).toBe(30_000);
   });
 
   it("normalizes Windows saved notebook paths for dedupe", () => {

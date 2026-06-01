@@ -32,6 +32,7 @@ export function renderDashboard(): string {
         </section>
         <section>
           <h2>Diagnostics</h2>
+          <p class="muted">Agent and notebook status values include live, degraded, offline, and retired.</p>
           <pre id="diagnostics" class="muted">Loading diagnostics…</pre>
         </section>
       </div>

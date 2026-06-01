@@ -377,4 +377,92 @@ describe("NotebookRegistry", () => {
     expect(registry.listLive()).toEqual([]);
     expect(registry.listAll()).toHaveLength(1);
   });
+
+  describe("Phase 8.1 degraded status", () => {
+    it("markDegradedByAgent sets status to degraded and keeps notebook in listLive", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat());
+
+      registry.markDegradedByAgent("agent-1", 3000);
+
+      const retrieved = registry.get(record.notebookId);
+      expect(retrieved?.status).toBe("degraded");
+      expect(retrieved?.degraded).toBe(true);
+      expect(retrieved?.degradedAt).toBe(3000);
+      expect(retrieved?.stale).toBe(false);
+      expect(registry.listLive()).toHaveLength(1);
+      expect(registry.listLive()[0]?.status).toBe("degraded");
+    });
+
+    it("markStaleByAgent sets status to offline and hides from listLive", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat());
+
+      registry.markStaleByAgent("agent-1", 3000);
+
+      const retrieved = registry.get(record.notebookId);
+      expect(retrieved?.status).toBe("offline");
+      expect(retrieved?.stale).toBe(true);
+      expect(registry.listLive()).toEqual([]);
+      expect(registry.listAll()).toHaveLength(1);
+    });
+
+    it("closed notebooks have status closed and are hidden from listLive", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat());
+
+      registry.markClosed(record.notebookId, 4000);
+
+      expect(registry.get(record.notebookId)?.status).toBe("closed");
+      expect(registry.get(record.notebookId)?.closed).toBe(true);
+      expect(registry.listLive()).toEqual([]);
+    });
+
+    it("upsertHeartbeat clears degraded status and restores live", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat({ displayName: "foo.nb", windowTitle: "foo.nb" }));
+      registry.markDegradedByAgent("agent-1", 3000);
+
+      const revived = registry.upsertHeartbeat(
+        heartbeat({ displayName: "foo.nb", windowTitle: "foo.nb", seenAt: 5000 }),
+      );
+
+      expect(revived.notebookId).toBe(record.notebookId);
+      expect(registry.get(record.notebookId)?.status).toBe("live");
+      expect(registry.get(record.notebookId)?.degraded).toBe(false);
+      expect(registry.get(record.notebookId)?.degradedAt).toBeUndefined();
+      expect(registry.listLive()).toHaveLength(1);
+    });
+
+    it("preserves lastSeenAt while recording degraded and offline transition times", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat({ seenAt: 1000 }));
+
+      registry.markDegradedByAgent("agent-1", 11_000);
+      expect(registry.get(record.notebookId)).toMatchObject({
+        lastSeenAt: 1000,
+        degradedAt: 11_000,
+      });
+
+      registry.markStaleByAgent("agent-1", 31_000);
+      expect(registry.get(record.notebookId)).toMatchObject({
+        lastSeenAt: 1000,
+        offlineAt: 31_000,
+      });
+    });
+
+    it("does not update offline transition time for already stale notebooks", () => {
+      const registry = new NotebookRegistry(() => "notebook-1");
+      const record = registry.upsertHeartbeat(heartbeat({ seenAt: 1000 }));
+
+      registry.markStaleByAgent("agent-1", 31_000);
+      registry.markStaleByAgent("agent-1", 32_000);
+
+      expect(registry.get(record.notebookId)).toMatchObject({
+        stale: true,
+        status: "offline",
+        offlineAt: 31_000,
+      });
+    });
+  });
 });

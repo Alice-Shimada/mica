@@ -19,10 +19,13 @@ export class AgentRegistry {
       wolframVersion: input.wolframVersion,
       platform: input.platform,
       lastSeenAt: input.seenAt,
+      degradedAt: undefined,
+      degraded: false,
       offlineAt: undefined,
       offline: false,
       retired: false,
       retiredReason: undefined,
+      status: "live",
       machineId: input.machineId,
       frontendSessionId: input.frontendSessionId,
       wolframProcessId: input.wolframProcessId,
@@ -41,10 +44,13 @@ export class AgentRegistry {
     const next: AgentInfo = {
       ...existing,
       lastSeenAt: seenAt,
+      degradedAt: undefined,
+      degraded: false,
       offlineAt: undefined,
       offline: false,
       retired: false,
       retiredReason: undefined,
+      status: "live",
     };
 
     this.agents.set(agentSessionId, next);
@@ -57,10 +63,13 @@ export class AgentRegistry {
 
     const next: AgentInfo = {
       ...existing,
+      degraded: false,
+      degradedAt: undefined,
       offline: true,
       retired: true,
       retiredReason: reason,
       offlineAt: retiredAt,
+      status: "retired",
     };
 
     this.agents.set(agentSessionId, next);
@@ -95,13 +104,35 @@ export class AgentRegistry {
 
       this.agents.set(agent.agentSessionId, {
         ...agent,
+        degraded: false,
+        degradedAt: undefined,
         offline: true,
         offlineAt: now,
+        status: "offline",
       });
       newlyOffline.push(agent.agentSessionId);
     }
 
     return newlyOffline;
+  }
+
+  markDegradedOlderThan(now: number, maxAgeMs: number): string[] {
+    const newlyDegraded: string[] = [];
+
+    for (const agent of this.agents.values()) {
+      if (agent.degraded || agent.offline || agent.retired) continue;
+      if (now - agent.lastSeenAt < maxAgeMs) continue;
+
+      this.agents.set(agent.agentSessionId, {
+        ...agent,
+        degraded: true,
+        degradedAt: now,
+        status: "degraded",
+      });
+      newlyDegraded.push(agent.agentSessionId);
+    }
+
+    return newlyDegraded;
   }
 
   private clone(agent: AgentInfo): AgentInfo {

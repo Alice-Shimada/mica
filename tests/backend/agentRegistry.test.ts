@@ -195,4 +195,88 @@ describe("AgentRegistry", () => {
     expect(agent?.wolframProcessId).toBeUndefined();
     expect(agent?.offline).toBe(false);
   });
+
+  describe("Phase 8.1 degraded status", () => {
+    it("marks agents degraded after the degraded cutoff but before the offline cutoff", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      const degraded = registry.markDegradedOlderThan(11_000, 10_000);
+
+      expect(degraded).toEqual(["agent-1"]);
+      const agent = registry.get("agent-1");
+      expect(agent?.status).toBe("degraded");
+      expect(agent?.degraded).toBe(true);
+      expect(agent?.degradedAt).toBe(11_000);
+      expect(agent?.offline).toBe(false);
+      expect(registry.hasLiveAgent()).toBe(true);
+    });
+
+    it("does not mark agents degraded before the degraded cutoff", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+
+      expect(registry.markDegradedOlderThan(10_999, 10_000)).toEqual([]);
+      const agent = registry.get("agent-1");
+      expect(agent?.status).toBe("live");
+      expect(agent?.degraded).toBe(false);
+      expect(agent?.degradedAt).toBeUndefined();
+    });
+
+    it("heartbeat recovers a degraded agent back to live", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      registry.markDegradedOlderThan(11_000, 10_000);
+
+      const recovered = registry.heartbeat("agent-1", 12_000);
+      expect(recovered?.status).toBe("live");
+      expect(recovered?.degraded).toBe(false);
+      expect(recovered?.degradedAt).toBeUndefined();
+      expect(recovered?.offline).toBe(false);
+    });
+
+    it("lists degraded agents and includes them in hasLiveAgent", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      registry.markDegradedOlderThan(11_000, 10_000);
+
+      const listed = registry.list();
+      expect(listed).toHaveLength(1);
+      expect(listed[0]?.status).toBe("degraded");
+      expect(registry.hasLiveAgent()).toBe(true);
+    });
+
+    it("marks agents offline at 30s even if already degraded", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      registry.markDegradedOlderThan(11_000, 10_000);
+
+      const offline = registry.markOfflineOlderThan(31_000, 30_000);
+      expect(offline).toEqual(["agent-1"]);
+      const agent = registry.get("agent-1");
+      expect(agent?.status).toBe("offline");
+      expect(agent?.offline).toBe(true);
+      expect(registry.hasLiveAgent()).toBe(false);
+    });
+
+    it("does not re-report already degraded agents on repeated degraded cutoff checks", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+
+      expect(registry.markDegradedOlderThan(11_000, 10_000)).toEqual(["agent-1"]);
+      expect(registry.get("agent-1")?.degradedAt).toBe(11_000);
+      expect(registry.markDegradedOlderThan(12_000, 10_000)).toEqual([]);
+      expect(registry.get("agent-1")?.degradedAt).toBe(11_000);
+    });
+
+    it("retired agents have status retired and are excluded from hasLiveAgent", () => {
+      const registry = new AgentRegistry();
+      registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+      registry.retire("agent-1", 2000, "no_live_notebooks");
+
+      const agent = registry.get("agent-1");
+      expect(agent?.status).toBe("retired");
+      expect(agent?.retired).toBe(true);
+      expect(registry.hasLiveAgent()).toBe(false);
+    });
+  });
 });
