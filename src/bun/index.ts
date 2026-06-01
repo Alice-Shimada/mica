@@ -51,7 +51,7 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
         process.off("SIGTERM", onSignal);
       };
     });
-  const httpApp = await createHttpApp({ state, host: config.host, port: config.preferredPort });
+  const httpApp = await createHttpApp({ state, host: config.host, port: config.preferredPort, authToken: config.authToken });
   let cleanupSignals = () => {};
   let stopped = false;
   let stopPromise: Promise<void> | undefined;

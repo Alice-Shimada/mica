@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BackendState } from "../src/backend/backendState.js";
 import { createBunHttpApp, createFetchHandler } from "../src/bun/httpServer.js";
+
+const httpServerSource = readFileSync(new URL("../src/bun/httpServer.ts", import.meta.url), "utf8");
 
 const permissions = {
   ReadNotebook: true,
@@ -46,6 +49,29 @@ describe("Bun HTTP app", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ server: "running" });
+  });
+
+  it("requires Bearer authorization when an auth token is configured", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0, authToken: "secret-token" });
+    servers.push(server);
+
+    const base = `http://127.0.0.1:${server.port}`;
+
+    const missingResponse = await fetch(`${base}/status`);
+    expect(missingResponse.status).toBe(401);
+    await expect(missingResponse.json()).resolves.toEqual({ error: { code: "UNAUTHORIZED" } });
+
+    const wrongResponse = await fetch(`${base}/status`, { headers: { authorization: "Bearer wrong-token" } });
+    expect(wrongResponse.status).toBe(401);
+
+    const authorizedResponse = await fetch(`${base}/status`, { headers: { authorization: "Bearer secret-token" } });
+    expect(authorizedResponse.status).toBe(200);
+    await expect(authorizedResponse.json()).resolves.toMatchObject({ server: "running" });
+  });
+
+  it("uses timing-safe comparison for configured Bearer tokens", () => {
+    expect(httpServerSource).toContain("timingSafeEqual");
   });
 
   it("reports status, registers agents, and lists notebooks", async () => {

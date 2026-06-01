@@ -17,6 +17,7 @@ describe("Bun runtime session file", () => {
     const sessionFile = path.join(tempDir, ".mica", "session.json");
     const stop = vi.fn().mockResolvedValue(undefined);
     const connect = vi.fn().mockResolvedValue(undefined);
+    const createHttpApp = vi.fn().mockResolvedValue({ port: 45678, stop });
 
     const runtime = await startBunRuntime({
       runtimeConfig: {
@@ -26,7 +27,7 @@ describe("Bun runtime session file", () => {
         authToken: "test-token",
         bridgeOnly: false,
       },
-      createHttpApp: async () => ({ port: 45678, stop }),
+      createHttpApp,
       createMcpServer: () => ({ tool: vi.fn(), prompt: vi.fn(), connect } as never),
       version: "9.8.7-test",
     });
@@ -43,6 +44,7 @@ describe("Bun runtime session file", () => {
       status: "running",
     });
     expect(typeof session.updatedAt).toBe("string");
+    expect(createHttpApp).toHaveBeenCalledWith(expect.objectContaining({ authToken: "test-token" }));
 
     await runtime.stop();
   });

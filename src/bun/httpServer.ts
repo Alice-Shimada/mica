@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BackendState } from "../backend/backendState.js";
@@ -13,6 +14,7 @@ export type BunHttpAppOptions = {
   state: BackendState;
   host?: string;
   port: number;
+  authToken?: string;
 };
 
 type RuntimeServer = {
@@ -40,8 +42,8 @@ type HiddenAgentResultBody = Record<string, unknown>;
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
 
-export async function createBunHttpApp({ state, host = "127.0.0.1", port }: BunHttpAppOptions): Promise<BunHttpApp> {
-  const fetchHandler = createFetchHandler(state);
+export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken }: BunHttpAppOptions): Promise<BunHttpApp> {
+  const fetchHandler = createFetchHandler(state, { authToken });
   const bun = (globalThis as typeof globalThis & {
     Bun?: { serve?: (options: { hostname: string; port: number; fetch: (request: Request) => Promise<Response> | Response }) => { port: number; stop: () => void | Promise<void> } };
   }).Bun;
@@ -59,11 +61,15 @@ export async function createBunHttpApp({ state, host = "127.0.0.1", port }: BunH
   return startNodeFallbackServer(fetchHandler, host, port);
 }
 
-export function createFetchHandler(state: BackendState) {
+export function createFetchHandler(state: BackendState, options: { authToken?: string } = {}) {
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
     try {
+      if (!isAuthorized(request.headers.get("authorization"), options.authToken)) {
+        return jsonResponse({ error: { code: "UNAUTHORIZED" } }, 401);
+      }
+
       if (request.method === "GET" && url.pathname === "/status") {
         state.sweepLiveness(Date.now());
         return jsonResponse({ server: "running", agents: state.agents.list(), notebooks: state.notebooks.listLive() });
@@ -192,6 +198,14 @@ export function createFetchHandler(state: BackendState) {
       return jsonResponse({ error: { code: "INTERNAL_ERROR", message } }, 500);
     }
   };
+}
+
+function isAuthorized(authorizationHeader: string | null, authToken: string | undefined): boolean {
+  if (!authToken) return true;
+
+  const expected = Buffer.from(`Bearer ${authToken}`);
+  const actual = Buffer.from(authorizationHeader ?? "");
+  return actual.byteLength === expected.byteLength && timingSafeEqual(actual, expected);
 }
 
 async function startNodeFallbackServer(fetchHandler: (request: Request) => Promise<Response>, host: string, port: number): Promise<BunHttpApp> {
