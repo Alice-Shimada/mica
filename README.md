@@ -201,6 +201,11 @@ Live smoke test:
 5. Confirm insert, read, modify, run, get-output, delete, abort, and symbol lookup work against that notebook.
 6. Run `node scripts/install.js --uninstall` and confirm the marked block is removed from `Kernel/init.m`.
 
+See also:
+
+- [Manual Smoke Test](docs/qa/manual-smoke-test.md) — full release checklist.
+- [Support Matrix](docs/qa/support-matrix.md) — platform and runtime coverage.
+
 ## Security Model
 
 - MICA binds its HTTP bridge to `127.0.0.1`.
