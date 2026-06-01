@@ -44,6 +44,9 @@ export type AgentInfo = {
   offline: boolean;
   retired: boolean;
   retiredReason?: AgentRetiredReason;
+  machineId?: string;
+  frontendSessionId?: string;
+  wolframProcessId?: string;
 };
 
 export type NotebookHeartbeat = {

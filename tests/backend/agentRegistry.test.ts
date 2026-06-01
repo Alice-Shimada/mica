@@ -144,4 +144,55 @@ describe("AgentRegistry", () => {
     expect(registry.get("agent-old")?.offline).toBe(true);
     expect(registry.heartbeat("agent-old", 7000)).toMatchObject({ agentSessionId: "agent-old", offline: false, retired: false });
   });
+
+  it("stores optional scope fields when registering and returns them in status", () => {
+    const registry = new AgentRegistry();
+    registry.register({
+      agentSessionId: "agent-scoped",
+      wolframVersion: "14.3",
+      platform: "Windows",
+      seenAt: 1000,
+      machineId: "machine-abc",
+      frontendSessionId: "fe-session-1",
+      wolframProcessId: "proc-42",
+    });
+
+    const agent = registry.get("agent-scoped");
+    expect(agent).toMatchObject({
+      agentSessionId: "agent-scoped",
+      machineId: "machine-abc",
+      frontendSessionId: "fe-session-1",
+      wolframProcessId: "proc-42",
+    });
+  });
+
+  it("preserves scope fields through heartbeat and list", () => {
+    const registry = new AgentRegistry();
+    registry.register({
+      agentSessionId: "agent-scoped",
+      wolframVersion: "14.3",
+      platform: "Windows",
+      seenAt: 1000,
+      machineId: "machine-abc",
+    });
+
+    registry.heartbeat("agent-scoped", 2000);
+    const agent = registry.get("agent-scoped");
+    expect(agent?.machineId).toBe("machine-abc");
+    expect(agent?.lastSeenAt).toBe(2000);
+
+    const listed = registry.list();
+    expect(listed[0]?.machineId).toBe("machine-abc");
+  });
+
+  it("accepts old registration payloads without scope fields", () => {
+    const registry = new AgentRegistry();
+    registry.register({ agentSessionId: "agent-old", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+
+    const agent = registry.get("agent-old");
+    expect(agent?.machineId).toBeUndefined();
+    expect(agent?.frontendSessionId).toBeUndefined();
+    expect(agent?.wolframProcessId).toBeUndefined();
+    expect(agent?.offline).toBe(false);
+  });
 });

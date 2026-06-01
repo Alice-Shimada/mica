@@ -1011,4 +1011,14 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       expect(source).toContain(snippet);
     }
   });
+
+  it("includes machineId in RegisterAgent payload", () => {
+    const registerStart = source.indexOf("RegisterAgent[] := BridgePost[");
+    const registerEnd = source.indexOf("AgentHeartbeat[] := BridgePost[", registerStart);
+    const registerBody = source.slice(registerStart, registerEnd);
+
+    expect(registerStart).toBeGreaterThanOrEqual(0);
+    expect(registerEnd).toBeGreaterThan(registerStart);
+    expect(registerBody).toContain('"machineId" -> ToString[$MachineID]');
+  });
 });

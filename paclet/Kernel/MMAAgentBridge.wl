@@ -1266,7 +1266,8 @@ RegisterAgent[] := BridgePost[
     "agentSessionId" -> $AgentSessionId,
     "wolframVersion" -> ToString[$VersionNumber],
     "platform" -> $OperatingSystem,
-    "seenAt" -> UnixTimeMilliseconds[]
+    "seenAt" -> UnixTimeMilliseconds[],
+    "machineId" -> ToString[$MachineID]
   |>
 ];
 

@@ -5,6 +5,9 @@ export type AgentRegistration = {
   wolframVersion: string;
   platform: string;
   seenAt: number;
+  machineId?: string;
+  frontendSessionId?: string;
+  wolframProcessId?: string;
 };
 
 export class AgentRegistry {
@@ -20,6 +23,9 @@ export class AgentRegistry {
       offline: false,
       retired: false,
       retiredReason: undefined,
+      machineId: input.machineId,
+      frontendSessionId: input.frontendSessionId,
+      wolframProcessId: input.wolframProcessId,
     };
 
     this.agents.set(input.agentSessionId, next);

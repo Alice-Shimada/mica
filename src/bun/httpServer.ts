@@ -27,6 +27,9 @@ type AgentRegisterBody = {
   wolframVersion?: unknown;
   platform?: unknown;
   seenAt?: unknown;
+  machineId?: unknown;
+  frontendSessionId?: unknown;
+  wolframProcessId?: unknown;
 };
 
 type AgentHeartbeatBody = {
@@ -85,8 +88,11 @@ export function createFetchHandler(state: BackendState, options: { authToken?: s
         const wolframVersion = readRequiredString(body.wolframVersion, "wolframVersion");
         const platform = readRequiredString(body.platform, "platform");
         const seenAt = readOptionalNumber(body.seenAt) ?? Date.now();
+        const machineId = readOptionalString(body.machineId);
+        const frontendSessionId = readOptionalString(body.frontendSessionId);
+        const wolframProcessId = readOptionalString(body.wolframProcessId);
 
-        const agent = state.agents.register({ agentSessionId, wolframVersion, platform, seenAt });
+        const agent = state.agents.register({ agentSessionId, wolframVersion, platform, seenAt, machineId, frontendSessionId, wolframProcessId });
         return jsonResponse({ agent });
       }
 

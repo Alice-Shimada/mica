@@ -960,6 +960,82 @@ describe("Bun HTTP app", () => {
     await expect(unknown.json()).resolves.toEqual({ accepted: false, late: false });
   });
 
+  it("accepts optional agent scope fields on registration and returns them in status", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0 });
+    servers.push(server);
+
+    const base = `http://127.0.0.1:${server.port}`;
+    const now = Date.now();
+
+    const registerResponse = await fetch(`${base}/agents/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agentSessionId: "agent-scoped",
+        wolframVersion: "14.3",
+        platform: "Windows",
+        seenAt: now,
+        machineId: "machine-abc",
+        frontendSessionId: "fe-session-1",
+        wolframProcessId: "proc-42",
+      }),
+    });
+
+    expect(registerResponse.status).toBe(200);
+    await expect(registerResponse.json()).resolves.toMatchObject({
+      agent: {
+        agentSessionId: "agent-scoped",
+        machineId: "machine-abc",
+        frontendSessionId: "fe-session-1",
+        wolframProcessId: "proc-42",
+      },
+    });
+
+    const statusResponse = await fetch(`${base}/status`);
+    expect(statusResponse.status).toBe(200);
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      server: "running",
+      agents: [
+        expect.objectContaining({
+          agentSessionId: "agent-scoped",
+          machineId: "machine-abc",
+          frontendSessionId: "fe-session-1",
+          wolframProcessId: "proc-42",
+        }),
+      ],
+    });
+  });
+
+  it("accepts registration without scope fields and omits them from status", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0 });
+    servers.push(server);
+
+    const base = `http://127.0.0.1:${server.port}`;
+    const now = Date.now();
+
+    await fetch(`${base}/agents/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        agentSessionId: "agent-plain",
+        wolframVersion: "13.3",
+        platform: "Windows",
+        seenAt: now,
+      }),
+    });
+
+    const statusResponse = await fetch(`${base}/status`);
+    expect(statusResponse.status).toBe(200);
+    const body = await statusResponse.json();
+    const agent = body.agents.find((a: { agentSessionId: string }) => a.agentSessionId === "agent-plain");
+    expect(agent).toBeDefined();
+    expect(agent.machineId).toBeUndefined();
+    expect(agent.frontendSessionId).toBeUndefined();
+    expect(agent.wolframProcessId).toBeUndefined();
+  });
+
   it("returns late for results from cancelled running requests and keeps them cancelled", async () => {
     const state = new BackendState(() => "notebook-1");
     state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
