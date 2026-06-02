@@ -2,6 +2,8 @@
 
 **Mathematica Interactive Control Agent**
 
+English | [简体中文](README.zh-CN.md)
+
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?logo=node.js&logoColor=white)
 ![Bun](https://img.shields.io/badge/runtime-Bun-f3e7d3?logo=bun&logoColor=111111)

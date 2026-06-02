@@ -26,6 +26,7 @@
     "src/bun/index.ts",
     "paclet",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE",
     "SECURITY.md",
     "CHANGELOG.md",

@@ -48,11 +48,11 @@ describe("package.json metadata", () => {
     );
   });
 
-  it("has files including dist/src, paclet, README.md, LICENSE, and scripts/install.js", () => {
+  it("has files including dist/src, paclet, bilingual READMEs, LICENSE, and scripts/install.js", () => {
     const files = pkg.files as string[] | undefined;
     expect(files).toBeDefined();
     expect(files).toEqual(
-      expect.arrayContaining(["dist/src", "paclet", "README.md", "LICENSE", "scripts/install.js"])
+      expect.arrayContaining(["dist/src", "paclet", "README.md", "README.zh-CN.md", "LICENSE", "scripts/install.js"])
     );
   });
 });
@@ -162,6 +162,7 @@ describe("CONTRIBUTING.md", () => {
 
 describe("README license badge consistency", () => {
   const readmePath = path.join(PROJECT_ROOT, "README.md");
+  const chineseReadmePath = path.join(PROJECT_ROOT, "README.zh-CN.md");
 
   it("references MIT license", () => {
     const content = readText(readmePath);
@@ -172,6 +173,19 @@ describe("README license badge consistency", () => {
     const content = readText(readmePath);
     // Must reference a local LICENSE file, not just an external URL
     expect(content).toMatch(/LICENSE/);
+  });
+
+  it("has a Chinese README with a local English language switch link", () => {
+    expect(existsSync(chineseReadmePath)).toBe(true);
+    const content = readText(chineseReadmePath);
+    expect(content).toContain("[English](README.md)");
+    expect(content).toMatch(/简体中文/);
+    expect(content).toMatch(/LICENSE/);
+  });
+
+  it("has an English README with a local Chinese language switch link", () => {
+    const content = readText(readmePath);
+    expect(content).toContain("[简体中文](README.zh-CN.md)");
   });
 });
 
