@@ -4,7 +4,7 @@
   "description": "Local MCP bridge for controlling active Mathematica notebooks through a Wolfram Paclet Palette.",
   "type": "module",
   "bin": {
-    "mica": "dist/src/bun/index.js"
+    "mica": "dist/src/cli/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

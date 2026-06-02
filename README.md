@@ -58,13 +58,13 @@ git clone https://github.com/Alice-Shimada/mica.git
 cd mica
 npm ci
 npm run build
-node scripts/install.js
+node dist/src/cli/index.js install
 ```
 
 Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
 
 ```bash
-npm run start:mcp
+node dist/src/cli/index.js start
 ```
 
 Dashboard:
@@ -78,9 +78,11 @@ The installer edits only your per-user Wolfram `Kernel/init.m`, creates a timest
 Dry run and uninstall:
 
 ```bash
-node scripts/install.js --dry-run
-node scripts/install.js --uninstall
+node dist/src/cli/index.js install --dry-run
+node dist/src/cli/index.js uninstall
 ```
+
+The legacy installer entry remains available for compatibility: `node scripts/install.js --dry-run`.
 
 ## MCP Client Config
 
