@@ -35,8 +35,12 @@ $RunningCellObject = None;
 $RunningCellOriginalEpilogRule = HoldComplete[CellEpilog -> Inherited];
 $RunningCellRestoreEpilogRule = HoldComplete[CellEpilog -> Inherited];
 $RunningStartedAt = None;
+$RunningStatus = None;
 $RunningStatusGraceSeconds = 2.0;
 $RunningTimeoutAt = None;
+$AbortRequestedAt = None;
+(* Reserved for future late-result surfacing; backend queue already rejects late timeout/cancel results. *)
+$LastLateResult = None;
 $LastRunStatusCellId = None;
 $LastRunStatusNotebookId = None;
 $LastRunStatus = None;
@@ -1012,6 +1016,8 @@ ClearRunningEvaluationState[] := Module[{cellId = $RunningCellId, notebook = $Ru
   $RunningNotebookId = None;
   $RunningNotebookObject = None;
   $RunningStartedAt = None;
+  $RunningStatus = None;
+  $AbortRequestedAt = None;
   $RunningTimeoutAt = None
 ];
 
@@ -1019,6 +1025,7 @@ FinishRunningCell[status_String] := Module[{cellId = $RunningCellId, notebookId 
   ClearRunningEvaluationState[];
   $LastRunStatusCellId = cellId;
   $LastRunStatusNotebookId = notebookId;
+  $RunningStatus = status;
   $LastRunStatus = status
 ];
 
@@ -1082,6 +1089,10 @@ CellArtifactScan[cell_CellObject, cellId_String:"", notebook_:Automatic] := Modu
       "finished",
     StringQ[cellId] && StringQ[$LastRunStatusCellId] && cellId === $LastRunStatusCellId && StringQ[$LastRunStatusNotebookId] && NotebookIdForObject[nb] === $LastRunStatusNotebookId && $LastRunStatus === "aborted",
       "aborted",
+    sameRunningCellQ && NumberQ[$AbortRequestedAt] && !evaluationCompleteQ,
+      "abort_requested",
+    sameRunningCellQ && NumberQ[$AbortRequestedAt] && evaluationCompleteQ,
+      (FinishRunningCell["aborted"]; "aborted"),
     sameRunningCellQ && NumberQ[$RunningStartedAt] && (AbsoluteTime[] - $RunningStartedAt < $RunningStatusGraceSeconds),
       "running",
     sameRunningCellQ && (evaluationCompleteQ || hasFinalOutputQ),
@@ -1351,6 +1362,9 @@ RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId
   $LastRunStatusCellId = None;
   $LastRunStatusNotebookId = None;
   $LastRunStatus = None;
+  $RunningStatus = "running";
+  $AbortRequestedAt = None;
+  $LastLateResult = None;
   $RunningRequestId = Lookup[args, "requestId", $CurrentRequestId];
   $RunningCellId = cellId;
   $RunningNotebookId = notebookId;
@@ -1384,10 +1398,13 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
     FinishRunningCell["finished"];
     Return[<|"status" -> "finished", "cellId" -> runningCellId, "requestId" -> runningRequestId|>]
   ];
+  If[wasRunning,
+    $AbortRequestedAt = AbsoluteTime[];
+    $RunningStatus = "abort_requested"
+  ];
   Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluatorAbort"], Null];
   If[wasRunning,
-    FinishRunningCell["aborted"];
-    <|"status" -> "aborted", "cellId" -> runningCellId, "requestId" -> runningRequestId|>,
+    <|"status" -> "abort_requested", "cellId" -> runningCellId, "requestId" -> runningRequestId|>,
     <|"status" -> "idle"|>
   ]
 ];

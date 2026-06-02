@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_TIMEOUTS_MS, canonicalizeNotebookPath } from "../../src/backend/protocol.js";
+
+const protocolSource = readFileSync(new URL("../../src/backend/protocol.ts", import.meta.url), "utf8");
 
 describe("backend protocol", () => {
   it("uses approved default timeouts", () => {
@@ -13,6 +16,17 @@ describe("backend protocol", () => {
     expect(DEFAULT_TIMEOUTS_MS.symbolLookup).toBe(30_000);
     expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatDegradedMs).toBe(10_000);
     expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatOfflineMs).toBe(30_000);
+  });
+
+  it("declares evaluation status names used by the Wolfram bridge", () => {
+    for (const status of [
+      '"abort_requested"',
+      '"kernel_unresponsive"',
+      '"unknown"',
+      '"late_result"',
+    ]) {
+      expect(protocolSource).toContain(status);
+    }
   });
 
   it("normalizes Windows saved notebook paths for dedupe", () => {

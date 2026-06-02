@@ -43,8 +43,11 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       '$RunningCellOriginalEpilogRule',
       '$RunningCellRestoreEpilogRule',
       '$RunningStartedAt',
+      '$RunningStatus',
       '$RunningStatusGraceSeconds',
       '$RunningTimeoutAt',
+      '$AbortRequestedAt',
+      '$LastLateResult',
       '$LastRunStatusCellId',
       '$LastRunStatusNotebookId',
       '$LastRunStatus',
@@ -112,10 +115,31 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source).toContain('$LastRunStatusNotebookId = None;');
   });
 
-  it("supports abort evaluation requests and marks running cells aborted", () => {
+  it("tracks evaluation state and clears abort request state", () => {
+    const clearStart = source.indexOf("ClearRunningEvaluationState[] := Module");
+    const finishStart = source.indexOf("FinishRunningCell[status_String]", clearStart);
+    const runStart = source.indexOf("RunCellRequest[args_Association]");
+    const abortStart = source.indexOf("AbortEvaluationRequest[args_Association]", runStart);
+    const clearBody = source.slice(clearStart, finishStart);
+    const runBody = source.slice(runStart, abortStart);
+
+    expect(source).toContain("$RunningStatus = None");
+    expect(source).toContain("$AbortRequestedAt = None");
+    expect(source).toContain("$LastLateResult = None");
+    expect(clearBody).toContain("$RunningStatus = None");
+    expect(clearBody).toContain("$AbortRequestedAt = None");
+    expect(runBody).toContain('$RunningStatus = "running"');
+    expect(runBody).toContain("$AbortRequestedAt = None");
+    expect(runBody).toContain("$LastLateResult = None");
+  });
+
+  it("supports abort evaluation requests without claiming confirmed abort", () => {
     const abortStart = source.indexOf("AbortEvaluationRequest[args_Association]");
     const abortEnd = source.indexOf("SaveNotebookRequest[args_Association]", abortStart);
     const abortBody = source.slice(abortStart, abortEnd);
+    const abortRequestedIndex = abortBody.indexOf("$AbortRequestedAt = AbsoluteTime[]");
+    const abortStatusIndex = abortBody.indexOf('$RunningStatus = "abort_requested"');
+    const evaluatorAbortIndex = abortBody.indexOf('FrontEndTokenExecute[notebook, "EvaluatorAbort"]');
 
     expect(abortStart).toBeGreaterThanOrEqual(0);
     expect(source).toContain("AbortEvaluationRequest[args_Association]");
@@ -124,11 +148,12 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody).toContain('FinishRunningCell["finished"]');
     expect(abortBody).toContain('<|"status" -> "finished", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');
-    expect(abortBody).toContain('FinishRunningCell["aborted"]');
-    expect(abortBody).toContain('<|"status" -> "aborted", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');
+    expect(abortBody).toContain('<|"status" -> "abort_requested", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');
     expect(abortBody).toContain('If[wasRunning && StringQ[runningCellId] && CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody.indexOf('FinishRunningCell["finished"]')).toBeGreaterThanOrEqual(0);
-    expect(abortBody.indexOf('FinishRunningCell["aborted"]')).toBeGreaterThan(abortBody.indexOf('FinishRunningCell["finished"]'));
+    expect(abortRequestedIndex).toBeGreaterThanOrEqual(0);
+    expect(abortStatusIndex).toBeGreaterThan(abortRequestedIndex);
+    expect(evaluatorAbortIndex).toBeGreaterThan(abortStatusIndex);
   });
 
   it("keeps cancellation status when a running cell exists", () => {
@@ -482,6 +507,20 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(graceIndex).toBeGreaterThanOrEqual(0);
     expect(outputIndex).toBeGreaterThanOrEqual(0);
     expect(graceIndex).toBeLessThan(outputIndex);
+  });
+
+  it("reports abort_requested until abort completion is observed", () => {
+    const scanStart = source.indexOf("CellArtifactScan[cell_CellObject");
+    const refreshStart = source.indexOf("RefreshCellMap[notebookId_String]", scanStart);
+    const scanBody = source.slice(scanStart, refreshStart);
+    const requestedIndex = scanBody.indexOf('sameRunningCellQ && NumberQ[$AbortRequestedAt] && !evaluationCompleteQ');
+    const abortedIndex = scanBody.indexOf('sameRunningCellQ && NumberQ[$AbortRequestedAt] && evaluationCompleteQ');
+
+    expect(scanStart).toBeGreaterThanOrEqual(0);
+    expect(requestedIndex).toBeGreaterThanOrEqual(0);
+    expect(scanBody).toContain('"abort_requested"');
+    expect(abortedIndex).toBeGreaterThan(requestedIndex);
+    expect(scanBody).toContain('(FinishRunningCell["aborted"]; "aborted")');
   });
 
   it("uses a CellEpilog completion flag so no-output evaluations can finish", () => {

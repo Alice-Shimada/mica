@@ -84,10 +84,14 @@ export type BackendRequestStatus =
   | "queued"
   | "dispatched"
   | "running"
+  | "abort_requested"
   | "succeeded"
   | "failed"
   | "timed_out"
-  | "cancelled";
+  | "cancelled"
+  | "kernel_unresponsive"
+  | "unknown"
+  | "late_result";
 
 export type BackendRequest = {
   requestId: string;
