@@ -3,7 +3,10 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { startBunRuntime } from "../bun/index.js";
+import { runConfigCommand } from "./configSnippets.js";
 import { runDoctor } from "./doctor.js";
+import { runStatusCommand, type CliStatusResult } from "./status.js";
+import { runStopCommand } from "./stop.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -28,6 +31,8 @@ export function helpText(): string {
 
 Commands:
   start                   Start the MICA bridge runtime (default)
+  stop                    Stop the running MICA bridge runtime
+  restart                 Stop then start the MICA bridge runtime
   install [options]       Install MICA bridge into Wolfram
   uninstall [options]     Uninstall MICA bridge from Wolfram
   doctor                  Diagnose MICA bridge configuration
@@ -35,6 +40,7 @@ Commands:
   config codex            Configure for Codex
   config claude-desktop   Configure for Claude Desktop
   config cursor           Configure for Cursor
+  config opencode         Configure for OpenCode
 
 Options:
   --help, -h              Show this help message
@@ -48,6 +54,9 @@ export async function runCli(
     startRuntime?: () => Promise<{ keepAlive: Promise<void> }>;
     runInstaller?: (argv: string[]) => string;
     runDoctor?: () => Promise<{ exitCode: number; output: string }>;
+    runStatus?: () => Promise<CliStatusResult>;
+    runConfig?: (argv: string[]) => { exitCode: number; output: string };
+    runStop?: () => Promise<{ exitCode: number; output: string }>;
     stdout?: { write(chunk: string): unknown };
     stderr?: { write(chunk: string): unknown };
   }
@@ -57,6 +66,9 @@ export async function runCli(
   const startRuntime = deps?.startRuntime;
   const runInstaller = deps?.runInstaller;
   const _runDoctor = deps?.runDoctor;
+  const _runStatus = deps?.runStatus;
+  const _runConfig = deps?.runConfig;
+  const _runStop = deps?.runStop;
 
   const command = argv[0];
 
@@ -90,6 +102,13 @@ export async function runCli(
 
   // start or no args
   if (command === "start" || command === undefined) {
+    if (_runStatus) {
+      const status = await _runStatus();
+      if (status.running) {
+        stdout.write(status.output);
+        return status.exitCode;
+      }
+    }
     if (!startRuntime) {
       stderr.write("Error: startRuntime not available\n");
       return 1;
@@ -110,10 +129,54 @@ export async function runCli(
     return exitCode;
   }
 
-  // Future commands (listed in help but not yet implemented)
-  if (command === "status" || command === "config") {
-    stderr.write(`Command '${command}' is not yet implemented. Use --help for available commands.\n`);
-    return 1;
+  // status
+  if (command === "status") {
+    if (!_runStatus) {
+      stderr.write("Error: runStatus not available\n");
+      return 1;
+    }
+    const { exitCode, output } = await _runStatus();
+    stdout.write(output);
+    return exitCode;
+  }
+
+  // config
+  if (command === "config") {
+    if (!_runConfig) {
+      stderr.write("Error: runConfig not available\n");
+      return 1;
+    }
+    const { exitCode, output } = _runConfig(argv.slice(1));
+    stdout.write(output);
+    return exitCode;
+  }
+
+  // stop
+  if (command === "stop") {
+    if (!_runStop) {
+      stderr.write("Error: runStop not available\n");
+      return 1;
+    }
+    const { exitCode, output } = await _runStop();
+    stdout.write(output);
+    return exitCode;
+  }
+
+  // restart
+  if (command === "restart") {
+    if (!_runStop) {
+      stderr.write("Error: runStop not available\n");
+      return 1;
+    }
+    if (!startRuntime) {
+      stderr.write("Error: startRuntime not available\n");
+      return 1;
+    }
+    const stopResult = await _runStop();
+    if (stopResult.output) stdout.write(stopResult.output);
+    const runtime = await startRuntime();
+    await runtime.keepAlive;
+    return 0;
   }
 
   // Unknown command
@@ -139,6 +202,9 @@ async function main(): Promise<void> {
   const exitCode = await runCli(process.argv.slice(2), {
     startRuntime: async () => startBunRuntime(),
     runInstaller,
+    runStatus: async () => runStatusCommand(),
+    runConfig: runConfigCommand,
+    runStop: async () => runStopCommand(),
     runDoctor: async () =>
       runDoctor({
         projectRoot,

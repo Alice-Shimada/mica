@@ -102,6 +102,9 @@ node dist/src/cli/index.js start
 mica install
 mica start
 mica doctor
+mica status
+mica stop
+mica restart
 ```
 
 Dashboard：
@@ -121,11 +124,41 @@ node dist/src/cli/index.js install --dry-run
 node dist/src/cli/index.js uninstall
 ```
 
+`mica status` 会打印当前 session file、server URL、version、PID、live agent/notebook 数量，以及带 token 的 dashboard URL。如果 server 已经在运行，`mica start` 会打印同样的 status，而不是因为端口占用直接失败；因此你随时可以用它找回 dashboard token。
+
 兼容用的 legacy 安装入口仍然可用：`node scripts/install.js --dry-run`。
 
 ## MCP Client 配置
 
-使用本地 checkout 中构建后的发布版入口：
+打印可复制的 MCP config snippet：
+
+```bash
+mica config codex
+mica config claude-desktop
+mica config cursor
+mica config opencode
+```
+
+MICA 只打印配置片段，不会替你编辑 client config 文件。
+
+OpenCode 的 snippet 使用经过验证的 local MCP 形状：
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mica": {
+      "type": "local",
+      "command": ["mica", "start"],
+      "enabled": true
+    }
+  }
+}
+```
+
+编辑 OpenCode config 后需要重启 OpenCode；config 只在启动时加载。
+
+如果要从本地 checkout 手动设置，请使用构建后的发布版入口：
 
 ```toml
 [mcp_servers.mica]

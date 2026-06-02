@@ -102,6 +102,9 @@ If MICA is installed on your `PATH`, the same release commands are:
 mica install
 mica start
 mica doctor
+mica status
+mica stop
+mica restart
 ```
 
 Dashboard:
@@ -121,11 +124,41 @@ node dist/src/cli/index.js install --dry-run
 node dist/src/cli/index.js uninstall
 ```
 
+`mica status` prints the current session file, server URL, version, PID, live agent/notebook counts, and the token-bearing dashboard URL. If a server is already running, `mica start` prints that same status instead of failing with a port-in-use error, so you can recover the dashboard token at any time.
+
 The legacy installer entry remains available for compatibility: `node scripts/install.js --dry-run`.
 
 ## MCP Client Config
 
-Use the built release entrypoint from your local checkout:
+Print a copy-pasteable MCP config snippet:
+
+```bash
+mica config codex
+mica config claude-desktop
+mica config cursor
+mica config opencode
+```
+
+MICA only prints snippets; it does not edit client config files for you.
+
+For OpenCode, the snippet uses the validated local MCP shape:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "mica": {
+      "type": "local",
+      "command": ["mica", "start"],
+      "enabled": true
+    }
+  }
+}
+```
+
+When editing OpenCode config, restart OpenCode after saving; config is loaded at startup.
+
+For manual setup from a local checkout, use the built release entrypoint:
 
 ```toml
 [mcp_servers.mica]

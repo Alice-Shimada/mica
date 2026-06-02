@@ -21,6 +21,9 @@ type CliModule = {
       startRuntime?: () => Promise<{ keepAlive: Promise<void> }>;
       runInstaller?: (argv: string[]) => string;
       runDoctor?: () => Promise<{ exitCode: number; output: string }>;
+      runStatus?: () => Promise<{ exitCode: number; output: string; running?: boolean }>;
+      runConfig?: (argv: string[]) => { exitCode: number; output: string };
+      runStop?: () => Promise<{ exitCode: number; output: string }>;
       stdout?: { write(chunk: string): unknown };
       stderr?: { write(chunk: string): unknown };
     }
@@ -86,7 +89,7 @@ describe("Phase 11.1 CLI entry point", () => {
 
       expect(text).toMatch(/Usage:\s+mica/);
 
-      const commands = ["start", "install", "uninstall", "doctor", "status"];
+      const commands = ["start", "stop", "restart", "install", "uninstall", "doctor", "status"];
       for (const cmd of commands) {
         expect(text).toMatch(new RegExp(cmd));
       }
@@ -94,6 +97,7 @@ describe("Phase 11.1 CLI entry point", () => {
       expect(text).toMatch(/config\s+codex/);
       expect(text).toMatch(/config\s+claude-desktop/);
       expect(text).toMatch(/config\s+cursor/);
+      expect(text).toMatch(/config\s+opencode/);
     });
   });
 
@@ -183,6 +187,7 @@ describe("Phase 11.1 CLI entry point", () => {
 
       let startCalled = false;
       let keepAliveResolved = false;
+      const stdoutChunks: string[] = [];
       const keepAlivePromise = new Promise<void>((resolve) => {
         // resolve after a tick so the test can observe the await
         setTimeout(() => {
@@ -228,6 +233,142 @@ describe("Phase 11.1 CLI entry point", () => {
 
       expect(exitCode).toBe(0);
       expect(startCalled).toBe(true);
+      expect(keepAliveResolved).toBe(true);
+    });
+
+    it("should print existing status and not start a new runtime when a server is already running", async () => {
+      const mod = await importCli();
+
+      let startCalled = false;
+      let statusCalled = false;
+      const stdoutChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["start"], {
+        startRuntime: async () => {
+          startCalled = true;
+          return { keepAlive: new Promise(() => {}) };
+        },
+        runStatus: async () => {
+          statusCalled = true;
+          return {
+            exitCode: 0,
+            output: "MICA status\nDashboard: http://127.0.0.1:19791/#token=test-token\n",
+            running: true,
+          };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(statusCalled).toBe(true);
+      expect(startCalled).toBe(false);
+      expect(stdoutChunks.join("")).toContain("#token=test-token");
+    });
+  });
+
+  // -- runCli(["status"]) ---------------------------------------------------
+
+  describe("runCli(['status'])", () => {
+    it("should call runStatus, write its output to stdout, and return its exitCode", async () => {
+      const mod = await importCli();
+
+      let statusCalled = false;
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["status"], {
+        runStatus: async () => {
+          statusCalled = true;
+          return { exitCode: 0, output: "MICA status\nServer: running\n", running: true };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+        stderr: { write(chunk: string) { stderrChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(statusCalled).toBe(true);
+      expect(stdoutChunks.join("")).toContain("MICA status");
+      expect(stderrChunks.join("")).toBe("");
+    });
+  });
+
+  // -- runCli(["config", "opencode"]) -------------------------------------
+
+  describe("runCli(['config', 'opencode'])", () => {
+    it("should call runConfig, write the opencode snippet to stdout, and return 0", async () => {
+      const mod = await importCli();
+
+      let receivedArgs: string[] | undefined;
+      const stdoutChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["config", "opencode"], {
+        runConfig: (argv: string[]) => {
+          receivedArgs = argv;
+          return { exitCode: 0, output: '{"mcp":{"mica":{"type":"local","command":["mica","start"]}}}\n' };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(receivedArgs).toEqual(["opencode"]);
+      expect(stdoutChunks.join("")).toContain('"type":"local"');
+      expect(stdoutChunks.join("")).toContain('"command":["mica","start"]');
+    });
+  });
+
+  // -- runCli(["stop"]) -----------------------------------------------------
+
+  describe("runCli(['stop'])", () => {
+    it("should call runStop, write its output to stdout, and return its exitCode", async () => {
+      const mod = await importCli();
+
+      let stopCalled = false;
+      const stdoutChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["stop"], {
+        runStop: async () => {
+          stopCalled = true;
+          return { exitCode: 0, output: "MICA stopped\n" };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(stopCalled).toBe(true);
+      expect(stdoutChunks.join("")).toContain("MICA stopped");
+    });
+  });
+
+  // -- runCli(["restart"]) --------------------------------------------------
+
+  describe("runCli(['restart'])", () => {
+    it("should stop first, then start the runtime", async () => {
+      const mod = await importCli();
+
+      const calls: string[] = [];
+      let keepAliveResolved = false;
+      const stdoutChunks: string[] = [];
+      const keepAlivePromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          keepAliveResolved = true;
+          resolve();
+        }, 0);
+      });
+
+      const exitCode = await mod.runCli(["restart"], {
+        runStop: async () => {
+          calls.push("stop");
+          return { exitCode: 0, output: "MICA stopped\n" };
+        },
+        startRuntime: async () => {
+          calls.push("start");
+          return { keepAlive: keepAlivePromise };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(calls).toEqual(["stop", "start"]);
       expect(keepAliveResolved).toBe(true);
     });
   });
