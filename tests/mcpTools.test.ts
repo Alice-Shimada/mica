@@ -193,6 +193,7 @@ describe("MCP tool bridge readiness", () => {
       "mma_run_cell",
       "mma_abort_evaluation",
       "mma_get_cell_output",
+      "mma_read_artifact",
       "mma_save_notebook",
       "mma_symbol_lookup"
     ]);
@@ -313,6 +314,7 @@ describe("Bun backend MCP compatibility", () => {
       "mma_run_cell",
       "mma_abort_evaluation",
       "mma_get_cell_output",
+      "mma_read_artifact",
       "mma_save_notebook"
     ]);
 

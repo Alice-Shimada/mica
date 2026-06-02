@@ -863,6 +863,72 @@ TruncatePayloadFields[content_String, outputs_List, messages_List, maxBytes_Inte
   ]
 ];
 
+ArtifactId[cellId_String, kind_String, index_Integer] := cellId <> ":" <> kind <> ":" <> ToString[index];
+
+ArtifactDescriptor[cellId_String, kind_String, index_Integer, text_String, maxBytes_Integer] := Module[{byteLength, preview},
+  byteLength = Length[ToCharacterCode[text, "UTF8"]];
+  preview = TruncateStringToUtf8Bytes[text, maxBytes];
+  <|
+    "artifactId" -> ArtifactId[cellId, kind, index],
+    "type" -> kind,
+    "index" -> index,
+    "byteLength" -> byteLength,
+    "preview" -> preview["value"],
+    "previewByteLength" -> preview["returnedByteLength"],
+    "truncated" -> True
+  |>
+];
+
+ArtifactPayloadFields[cellId_String, outputs_List, messages_List, maxBytes_Integer] := Module[{remainingByteLength = maxBytes, totalOriginalByteLength = 0, totalReturnedByteLength = 0, anyTruncated = False, processedOutputs = {}, processedMessages = {}, processString, output, message},
+  processString[text_, kind_String, index_Integer] := Module[{value = If[StringQ[text], text, ToString[text, InputForm]], byteLength, descriptor},
+    byteLength = Length[ToCharacterCode[value, "UTF8"]];
+    totalOriginalByteLength += byteLength;
+    If[byteLength <= remainingByteLength,
+      totalReturnedByteLength += byteLength;
+      remainingByteLength = Max[0, remainingByteLength - byteLength];
+      value,
+      anyTruncated = True;
+      descriptor = ArtifactDescriptor[cellId, kind, index, value, remainingByteLength];
+      totalReturnedByteLength += descriptor["previewByteLength"];
+      remainingByteLength = Max[0, remainingByteLength - descriptor["previewByteLength"]];
+      descriptor
+    ]
+  ];
+  Do[
+    AppendTo[processedOutputs, processString[outputs[[i]], "output", i - 1]],
+    {i, Length[outputs]}
+  ];
+  Do[
+    AppendTo[processedMessages, processString[messages[[i]], "message", i - 1]],
+    {i, Length[messages]}
+  ];
+  <|
+    "outputs" -> processedOutputs,
+    "messages" -> processedMessages,
+    "truncated" -> anyTruncated,
+    "originalByteLength" -> totalOriginalByteLength,
+    "returnedByteLength" -> totalReturnedByteLength
+  |>
+];
+
+Utf8SliceStringToBytes[text_String, offset_Integer, limit_Integer] := Module[{bytes, originalByteLength, start, available, safeLength, sliceBytes, value},
+  bytes = ToCharacterCode[text, "UTF8"];
+  originalByteLength = Length[bytes];
+  If[limit <= 0 || offset >= originalByteLength,
+    Return[<|"value" -> "", "originalByteLength" -> originalByteLength, "returnedByteLength" -> 0, "nextOffset" -> originalByteLength|>]
+  ];
+  start = Max[1, offset + 1];
+  While[start <= originalByteLength && bytes[[start]] >= 128 && bytes[[start]] <= 191, start++];
+  available = originalByteLength - start + 1;
+  If[available <= 0,
+    Return[<|"value" -> "", "originalByteLength" -> originalByteLength, "returnedByteLength" -> 0, "nextOffset" -> originalByteLength|>]
+  ];
+  safeLength = Utf8PrefixByteLength[Take[bytes, {start, originalByteLength}], Min[limit, available]];
+  sliceBytes = If[safeLength > 0, Take[bytes, {start, start + safeLength - 1}], {}];
+  value = If[safeLength > 0, ByteArrayToString[ByteArray[sliceBytes], "UTF8"], ""];
+  <|"value" -> value, "originalByteLength" -> originalByteLength, "returnedByteLength" -> safeLength, "nextOffset" -> (start - 1 + safeLength)|>
+];
+
 CellEvaluationTaggingPath[cellId_String] := {TaggingRules, "MMAAgentBridge", "evaluations", cellId, "complete"};
 
 MarkCellEvaluationComplete[cellId_String] := Quiet @ Check[
@@ -1093,12 +1159,50 @@ GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell,
   If[MissingQ[cell], Return[Failure["BAD_REQUEST", <|"message" -> "Requested cell was not found."|>]]];
   maxBytes = CellPayloadMaxBytes[args];
   artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]];
-  payload = TruncatePayloadFields["", artifacts["outputs"], artifacts["messages"], maxBytes, False];
+  payload = ArtifactPayloadFields[cellId, artifacts["outputs"], artifacts["messages"], maxBytes];
   Join[
     <|"cellId" -> cellId|>,
     payload,
     <|"status" -> artifacts["status"]|>
   ]
+];
+
+ReadArtifactById[args_Association] := Module[{notebookId, record, artifactId, parts, cellId, kind, indexText, index, cell, artifacts, artifactList, text, offset, limit, page, nextOffset, done},
+  If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
+  notebookId = TargetNotebookId[args];
+  If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  record = NotebookRecord[notebookId];
+  If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  artifactId = Lookup[args, "artifactId", ""];
+  If[!StringQ[artifactId] || StringLength[artifactId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "artifactId is required."|>]]];
+  parts = StringSplit[artifactId, ":"];
+  If[Length[parts] =!= 3, Return[Failure["BAD_REQUEST", <|"message" -> "artifactId must have the form cellId:type:index."|>]]];
+  {cellId, kind, indexText} = parts;
+  If[!MemberQ[{"output", "message"}, kind], Return[Failure["BAD_REQUEST", <|"message" -> "artifact type must be output or message."|>]]];
+  If[!StringMatchQ[indexText, DigitCharacter..], Return[Failure["BAD_REQUEST", <|"message" -> "artifact index must be a non-negative integer."|>]]];
+  index = ToExpression[indexText];
+  offset = Lookup[args, "offset", 0];
+  limit = Lookup[args, "limit", 65536];
+  If[!IntegerQ[offset] || offset < 0, Return[Failure["BAD_REQUEST", <|"message" -> "offset must be a non-negative integer."|>]]];
+  If[!IntegerQ[limit] || limit <= 0 || limit > $MaxCellPayloadBytes, Return[Failure["BAD_REQUEST", <|"message" -> "limit must be a positive integer up to 1 MiB."|>]]];
+  cell = Lookup[Lookup[record, "cellMap", <||>], cellId, Missing["NotFound"]];
+  If[MissingQ[cell], Return[Failure["BAD_REQUEST", <|"message" -> "Requested cell was not found."|>]]];
+  artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]];
+  artifactList = If[kind === "output", artifacts["outputs"], artifacts["messages"]];
+  If[index >= Length[artifactList], Return[Failure["BAD_REQUEST", <|"message" -> "Requested artifact was not found."|>]]];
+  text = artifactList[[index + 1]];
+  page = Utf8SliceStringToBytes[text, offset, limit];
+  nextOffset = page["nextOffset"];
+  done = nextOffset >= page["originalByteLength"];
+  <|
+    "artifactId" -> artifactId,
+    "offset" -> offset,
+    "limit" -> limit,
+    "data" -> page["value"],
+    "nextOffset" -> nextOffset,
+    "done" -> done,
+    "byteLength" -> page["originalByteLength"]
+  |>
 ];
 
 MakeCellExpression[content_String, style_String] := Module[{cellStyle = If[StringQ[style] && StringLength[style] > 0, style, "Input"]},
@@ -1655,6 +1759,7 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
           "mma_run_cell", RunCellRequest[args],
           "mma_abort_evaluation", AbortEvaluationRequest[args],
           "mma_get_cell_output", GetCellOutputById[args],
+          "mma_read_artifact", ReadArtifactById[args],
           "mma_save_notebook", SaveNotebookRequest[args],
           "mma_select_notebook", SelectNotebookRequest[args],
           "mma_symbol_lookup", SymbolLookup[Lookup[args, "query", ""]],

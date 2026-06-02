@@ -9,6 +9,7 @@ import {
   insertCellSchema,
   modifyCellSchema,
   noArgsSchema,
+  readArtifactSchema,
   readCellSchema,
   selectNotebookSchema,
   saveNotebookSchema,
@@ -246,8 +247,13 @@ export function registerMmaTools(
     },
     {
       name: "mma_get_cell_output",
-      summary: "Read output and messages for one Mathematica notebook cell.",
+      summary: "Read output and messages for one Mathematica notebook cell, refreshing completed run status when observed.",
       schema: getCellOutputSchema.shape,
+    },
+    {
+      name: "mma_read_artifact",
+      summary: "Read one large output or message artifact by byte page. Artifact ids are resolved against current notebook state and may become stale after notebook edits or reruns.",
+      schema: readArtifactSchema.shape,
     },
     {
       name: "mma_save_notebook",

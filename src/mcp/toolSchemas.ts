@@ -54,6 +54,13 @@ export const getCellOutputSchema = z.object({
   maxBytes: maxBytesField.optional()
 }).strict();
 
+export const readArtifactSchema = z.object({
+  ...notebookSelectorFields,
+  artifactId: z.string().min(1),
+  offset: z.number().int().nonnegative().default(0),
+  limit: z.number().int().positive().max(1024 * 1024).default(65_536)
+}).strict();
+
 export const listCellsSchema = z.object({
   ...notebookSelectorFields
 }).strict();

@@ -125,6 +125,7 @@ The prompt tells the agent to start with `mma_status` or `mma_list_notebooks`, u
 | `mma_run_cell` | Evaluate one cell with a timeout. |
 | `mma_abort_evaluation` | Abort the current notebook evaluation. |
 | `mma_get_cell_output` | Read output and messages for a cell. |
+| `mma_read_artifact` | Read large output or message artifacts by byte page. |
 | `mma_save_notebook` | Save the notebook when `SaveNotebook` permission is granted. |
 
 All MCP tools return JSON text plus `structuredContent`.
@@ -133,7 +134,7 @@ All MCP tools return JSON text plus `structuredContent`.
 { "ok": true, "result": "..." }
 ```
 
-`mma_read_cell` and `mma_get_cell_output` truncate large cell content, outputs, and messages by default to keep MCP responses bounded. Pass `maxBytes` (positive integer, up to 1 MiB) to request a different payload budget shared across content, outputs, and messages in that response. Truncated responses include `truncated`, `originalByteLength`, and `returnedByteLength` metadata.
+`mma_read_cell` truncates large cell content, outputs, and messages by default to keep MCP responses bounded. `mma_get_cell_output` keeps small outputs/messages inline and returns artifact metadata for large entries; pass the returned `artifactId` to `mma_read_artifact` with `offset` and `limit` to page through the full text. Artifact ids are deterministic but ephemeral: they are resolved by rescanning the current notebook, so notebook edits or reruns can make an id stale or point to updated content. Reading outputs or artifacts may also refresh a completed cell's run status. Pass `maxBytes` (positive integer, up to 1 MiB) to request a different response budget. Truncated or artifact-backed responses include `truncated`, `originalByteLength`, and `returnedByteLength` metadata.
 
 Expected failures are structured and set the MCP `isError` flag:
 

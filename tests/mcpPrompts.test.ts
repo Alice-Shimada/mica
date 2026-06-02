@@ -65,6 +65,7 @@ describe("MICA MCP prompts", () => {
       "mma_run_cell",
       "mma_abort_evaluation",
       "mma_get_cell_output",
+      "mma_read_artifact",
       "mma_save_notebook",
     ]) {
       expect(text).toContain(tool);

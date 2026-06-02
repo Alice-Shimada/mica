@@ -14,7 +14,8 @@ const TOOL_GUIDE = [
   ["mma_delete_cell", "Delete an existing cell."],
   ["mma_run_cell", "Evaluate one cell and wait for completion or timeout."],
   ["mma_abort_evaluation", "Abort a running notebook evaluation."],
-  ["mma_get_cell_output", "Read output and messages produced by one cell."],
+  ["mma_get_cell_output", "Read output and messages produced by one cell; this may refresh completed run status."],
+  ["mma_read_artifact", "Read large output or message artifacts by byte page; ids may become stale after notebook edits or reruns."],
   ["mma_save_notebook", "Save the selected notebook when SaveNotebook permission is granted."],
 ] as const;
 

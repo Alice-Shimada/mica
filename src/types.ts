@@ -8,6 +8,7 @@ export type ToolName =
   | "mma_run_cell"
   | "mma_abort_evaluation"
   | "mma_get_cell_output"
+  | "mma_read_artifact"
   | "mma_select_notebook"
   | "mma_symbol_lookup"
   | "mma_save_notebook";

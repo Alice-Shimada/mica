@@ -200,6 +200,7 @@ describe("backend MCP tool registration", () => {
       "mma_run_cell",
       "mma_abort_evaluation",
       "mma_get_cell_output",
+      "mma_read_artifact",
       "mma_save_notebook",
     ]);
   });
@@ -248,6 +249,37 @@ describe("backend MCP tool registration", () => {
         structuredContent: expect.objectContaining({ ok: true }),
       });
     }
+  });
+
+  it("registers read_artifact pagination arguments and forwards them to the hidden agent", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });
+    state.activeNotebookId = notebook.notebookId;
+    const registration = registrationByName(registerTools(state), "mma_read_artifact");
+    const schema = z.object(registration.schema as ZodRawShape).strict();
+    const args = { artifactId: "cell-1:output:0", offset: 65_536, limit: 32_768 };
+
+    expect(schema.safeParse(args).success).toBe(true);
+    expect(schema.safeParse({ artifactId: "cell-1:output:0", offset: -1 }).success).toBe(false);
+    expect(schema.safeParse({ artifactId: "cell-1:output:0", limit: 0 }).success).toBe(false);
+    expect(schema.safeParse({ artifactId: "cell-1:output:0", limit: 1024 * 1024 + 1 }).success).toBe(false);
+
+    const pending = registration.handler(args);
+    const queued = state.queue.snapshot().queued[0];
+    if (!queued) throw new Error("expected queued request");
+
+    expect(queued).toMatchObject({
+      tool: "mma_read_artifact",
+      targetNotebookId: notebook.notebookId,
+      agentSessionId: "agent-1",
+      timeoutMs: 10_000,
+      arguments: expect.objectContaining(args),
+    });
+
+    state.queue.resolve(queued.requestId, { artifactId: args.artifactId, data: "page" }, Date.now() + 1);
+    await expect(pending).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ ok: true, artifactId: args.artifactId, data: "page" }),
+    });
   });
 
   it("returns immediate JSON text for status and notebook selection", async () => {
@@ -322,10 +354,11 @@ describe("backend MCP tool registration", () => {
     const runResult = registrationByName(registrations, "mma_run_cell").handler({ cellId: "cell-1", timeoutSec: 7 });
     const abortResult = registrationByName(registrations, "mma_abort_evaluation").handler({});
     const outputResult = registrationByName(registrations, "mma_get_cell_output").handler({ cellId: "cell-1" });
+    const artifactResult = registrationByName(registrations, "mma_read_artifact").handler({ artifactId: "cell-1:output:0", offset: 0, limit: 1024 });
     const saveResult = registrationByName(registrations, "mma_save_notebook").handler({});
 
     const queued = state.queue.snapshot().queued;
-    expect(queued).toHaveLength(10);
+    expect(queued).toHaveLength(11);
     expect(queued[0]).toMatchObject({
       tool: "mma_list_cells",
       targetNotebookId: notebook.notebookId,
@@ -390,6 +423,13 @@ describe("backend MCP tool registration", () => {
       arguments: expect.objectContaining({ cellId: "cell-1" }),
     });
     expect(queued[9]).toMatchObject({
+      tool: "mma_read_artifact",
+      targetNotebookId: notebook.notebookId,
+      agentSessionId: "agent-1",
+      timeoutMs: 10_000,
+      arguments: expect.objectContaining({ artifactId: "cell-1:output:0", offset: 0, limit: 1024 }),
+    });
+    expect(queued[10]).toMatchObject({
       tool: "mma_save_notebook",
       targetNotebookId: notebook.notebookId,
       agentSessionId: "agent-1",
@@ -429,11 +469,14 @@ describe("backend MCP tool registration", () => {
     await expect(outputResult).resolves.toMatchObject({
       structuredContent: expect.objectContaining({ tool: "mma_get_cell_output" }),
     });
+    await expect(artifactResult).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ tool: "mma_read_artifact" }),
+    });
     await expect(saveResult).resolves.toMatchObject({
       structuredContent: expect.objectContaining({ tool: "mma_save_notebook" }),
     });
 
-    expect(resultByTool.size).toBe(10);
+    expect(resultByTool.size).toBe(11);
   });
 
   it("awaits hidden-agent results and returns the result object directly", async () => {
@@ -596,6 +639,7 @@ describe("backend MCP tool registration", () => {
       { tool: "mma_list_cells", args: {}, permission: "ReadNotebook" as const },
       { tool: "mma_symbol_lookup", args: { query: "Plot" }, permission: "ReadNotebook" as const },
       { tool: "mma_read_cell", args: { cellId: "cell-1" }, permission: "ReadNotebook" as const },
+      { tool: "mma_read_artifact", args: { artifactId: "cell-1:output:0" }, permission: "ReadNotebook" as const },
       { tool: "mma_insert_cell", args: { content: "1+1" }, permission: "InsertCell" as const },
       { tool: "mma_modify_cell", args: { cellId: "cell-1", content: "2+2" }, permission: "ModifyCell" as const },
       { tool: "mma_delete_cell", args: { cellId: "cell-1" }, permission: "DeleteCell" as const },
@@ -721,6 +765,7 @@ describe("backend MCP tool registration", () => {
       "mma_list_cells",
       "mma_read_cell",
       "mma_get_cell_output",
+      "mma_read_artifact",
       "mma_symbol_lookup",
     ] as const;
 
@@ -835,6 +880,9 @@ describe("backend MCP tool registration", () => {
           const args: Record<string, unknown> = {};
           if (tool === "mma_read_cell" || tool === "mma_get_cell_output") {
             args.cellId = "cell-1";
+          }
+          if (tool === "mma_read_artifact") {
+            args.artifactId = "cell-1:output:0";
           }
           if (tool === "mma_symbol_lookup") {
             args.query = "Plot";

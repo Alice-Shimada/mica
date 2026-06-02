@@ -431,9 +431,48 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(readBody).toContain("Join[");
     expect(readBody).toContain("payload");
     expect(outputBody).toContain("maxBytes = CellPayloadMaxBytes[args]");
-    expect(outputBody).toContain('payload = TruncatePayloadFields["", artifacts["outputs"], artifacts["messages"], maxBytes, False]');
+    expect(outputBody).toContain('payload = ArtifactPayloadFields[cellId, artifacts["outputs"], artifacts["messages"], maxBytes]');
     expect(outputBody).toContain("Join[");
     expect(outputBody).not.toContain('"content" ->');
+  });
+
+  it("returns deterministic artifact metadata and reads artifacts by byte page", () => {
+    const artifactStart = source.indexOf("ArtifactId[cellId_String, kind_String, index_Integer]");
+    const readArtifactStart = source.indexOf("ReadArtifactById[args_Association]");
+    const executeStart = source.indexOf("ExecuteRequest[request_Association]");
+    const artifactBody = source.slice(artifactStart, readArtifactStart);
+    const readArtifactBody = source.slice(readArtifactStart, executeStart);
+    const requiredSnippets = [
+      "ArtifactId[cellId_String, kind_String, index_Integer]",
+      'cellId <> ":" <> kind <> ":" <> ToString[index]',
+      "ArtifactDescriptor[cellId_String, kind_String, index_Integer, text_String, maxBytes_Integer]",
+      '"artifactId" -> ArtifactId[cellId, kind, index]',
+      '"type" -> kind',
+      '"byteLength" -> byteLength',
+      '"preview" -> preview["value"]',
+      "ArtifactPayloadFields[cellId_String, outputs_List, messages_List, maxBytes_Integer]",
+      "Utf8SliceStringToBytes[text_String, offset_Integer, limit_Integer]",
+      "ReadArtifactById[args_Association]",
+      'StringSplit[artifactId, ":"]',
+      "StringMatchQ[indexText, DigitCharacter..]",
+      '"data" -> page["value"]',
+      '"nextOffset" -> nextOffset',
+      '"done" -> done',
+      '"mma_read_artifact", ReadArtifactById[args]',
+    ];
+
+    for (const snippet of requiredSnippets) {
+      expect(source).toContain(snippet);
+    }
+
+    expect(artifactStart).toBeGreaterThanOrEqual(0);
+    expect(readArtifactStart).toBeGreaterThan(artifactStart);
+    expect(readArtifactBody).toContain("RequireReadPermission[]");
+    expect(readArtifactBody).toContain("TargetNotebookId[args]");
+    expect(readArtifactBody).toContain("CellArtifactScan[cell, cellId, Lookup[record, \"notebook\", None]]");
+    expect(readArtifactBody).toContain("Utf8SliceStringToBytes[text, offset, limit]");
+    expect(artifactBody).toContain("AppendTo[processedOutputs");
+    expect(artifactBody).toContain("AppendTo[processedMessages");
   });
 
   it("prefers grace before artifact-driven completion", () => {
