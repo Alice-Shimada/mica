@@ -67,7 +67,20 @@ Your already-open Mathematica notebook
 
 ## 快速开始
 
-从发布版 checkout 开始：
+从 npm 全局安装：
+
+```bash
+npm install -g @aliceshimada/mica
+mica install
+```
+
+然后完全退出并重启 Wolfram Desktop。打开一个 Notebook，启动 MCP server，并连接你的 MCP client：
+
+```bash
+mica start
+```
+
+或者从发布版 checkout 开始：
 
 ```bash
 git clone https://github.com/Alice-Shimada/mica.git

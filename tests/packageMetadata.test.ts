@@ -23,6 +23,14 @@ function readText(filePath: string): string {
 describe("package.json metadata", () => {
   const pkg = readJson(path.join(PROJECT_ROOT, "package.json")) as Record<string, unknown>;
 
+  it("has scoped name @aliceshimada/mica", () => {
+    expect(pkg.name).toBe("@aliceshimada/mica");
+  });
+
+  it("has version 1.0.0", () => {
+    expect(pkg.version).toBe("1.0.0");
+  });
+
   it("has repository pointing to Alice-Shimada/mica", () => {
     expect(pkg.repository).toEqual({
       type: "git",
@@ -186,6 +194,16 @@ describe("README license badge consistency", () => {
   it("has an English README with a local Chinese language switch link", () => {
     const content = readText(readmePath);
     expect(content).toContain("[简体中文](README.zh-CN.md)");
+  });
+
+  it("documents npm install -g @aliceshimada/mica in English README", () => {
+    const content = readText(readmePath);
+    expect(content).toContain("npm install -g @aliceshimada/mica");
+  });
+
+  it("documents npm install -g @aliceshimada/mica in Chinese README", () => {
+    const content = readText(chineseReadmePath);
+    expect(content).toContain("npm install -g @aliceshimada/mica");
   });
 });
 

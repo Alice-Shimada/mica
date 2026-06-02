@@ -67,7 +67,20 @@ The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evalua
 
 ## Quick Start
 
-From a release checkout:
+Install globally from npm:
+
+```bash
+npm install -g @aliceshimada/mica
+mica install
+```
+
+Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
+
+```bash
+mica start
+```
+
+Or from a release checkout:
 
 ```bash
 git clone https://github.com/Alice-Shimada/mica.git

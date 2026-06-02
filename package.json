@@ -1,7 +1,7 @@
 {
-  "name": "mica",
-  "version": "0.1.0",
-  "description": "Local MCP bridge for controlling active Mathematica notebooks through a Wolfram Paclet Palette.",
+  "name": "@aliceshimada/mica",
+  "version": "1.0.0",
+  "description": "Local MCP bridge for controlling live Wolfram Desktop / Mathematica notebooks.",
   "type": "module",
   "repository": {
     "type": "git",
