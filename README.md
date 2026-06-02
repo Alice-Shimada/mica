@@ -211,6 +211,33 @@ See also:
 - [Manual Smoke Test](docs/qa/manual-smoke-test.md) — full release checklist.
 - [Support Matrix](docs/qa/support-matrix.md) — platform and runtime coverage.
 
+## Troubleshooting
+
+Run the built-in doctor first — it diagnoses the most common issues without side effects:
+
+```bash
+node dist/src/cli/index.js doctor
+# or if installed globally:
+mica doctor
+```
+
+The doctor checks Node version, package build, session file, auth token, server reachability, live agent/notebook counts, Wolfram user base, `Kernel/init.m`, and the MICA autoload block. Each check reports `OK` or `FAIL` with a suggested `FIX` line.
+
+**Common failures and fixes:**
+
+| Doctor output | Likely cause | Action |
+| --- | --- | --- |
+| `FAIL Session file` | Server never started | `mica start` |
+| `FAIL Auth token` | Token mismatch or expired | Restart the server |
+| `FAIL Server /status reachable` | Server not running | `mica start` |
+| `FAIL Live agent count: 0` | Wolfram not running or bridge not loaded | Restart Wolfram Desktop after install |
+| `FAIL Live notebook count: 0` | No notebook open or registered | Open a notebook in Wolfram Desktop |
+| `FAIL Kernel/init.m` | Installer not run | `mica install` |
+| `FAIL Autoload block` | Installer not run or uninstalled | `mica install` |
+| `FAIL Package build` | Build artifacts missing | `npm run build` |
+
+If the doctor passes but you still see `NO_LIVE_AGENT`, `NOTEBOOK_STALE`, or connection errors in your MCP client, fully quit and restart Wolfram Desktop, then restart the MICA server.
+
 ## Security Model
 
 - MICA binds its HTTP bridge to `127.0.0.1`.

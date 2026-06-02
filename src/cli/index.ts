@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { startBunRuntime } from "../bun/index.js";
+import { runDoctor } from "./doctor.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,6 +47,7 @@ export async function runCli(
   deps?: {
     startRuntime?: () => Promise<{ keepAlive: Promise<void> }>;
     runInstaller?: (argv: string[]) => string;
+    runDoctor?: () => Promise<{ exitCode: number; output: string }>;
     stdout?: { write(chunk: string): unknown };
     stderr?: { write(chunk: string): unknown };
   }
@@ -54,6 +56,7 @@ export async function runCli(
   const stderr = deps?.stderr ?? process.stderr;
   const startRuntime = deps?.startRuntime;
   const runInstaller = deps?.runInstaller;
+  const _runDoctor = deps?.runDoctor;
 
   const command = argv[0];
 
@@ -96,8 +99,19 @@ export async function runCli(
     return 0;
   }
 
+  // doctor
+  if (command === "doctor") {
+    if (!_runDoctor) {
+      stderr.write("Error: runDoctor not available\n");
+      return 1;
+    }
+    const { exitCode, output } = await _runDoctor();
+    stdout.write(output);
+    return exitCode;
+  }
+
   // Future commands (listed in help but not yet implemented)
-  if (command === "doctor" || command === "status" || command === "config") {
+  if (command === "status" || command === "config") {
     stderr.write(`Command '${command}' is not yet implemented. Use --help for available commands.\n`);
     return 1;
   }
@@ -114,12 +128,22 @@ export async function runCli(
 async function main(): Promise<void> {
   const projectRoot = resolveProjectRoot();
   const installerUrl = pathToFileURL(path.join(projectRoot, "scripts", "install.js")).href;
-  const { runInstaller } = (await import(installerUrl)) as {
+  const { runInstaller, detectWolframUserBase } = (await import(installerUrl)) as {
     runInstaller: (argv: string[]) => string;
+    detectWolframUserBase: (opts?: Record<string, unknown>) => {
+      userBase: string;
+      source: string;
+      warnings: string[];
+    };
   };
   const exitCode = await runCli(process.argv.slice(2), {
     startRuntime: async () => startBunRuntime(),
     runInstaller,
+    runDoctor: async () =>
+      runDoctor({
+        projectRoot,
+        detectWolframUserBase: () => detectWolframUserBase(),
+      }),
   });
   process.exitCode = exitCode;
 }

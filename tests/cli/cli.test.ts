@@ -20,6 +20,7 @@ type CliModule = {
     deps?: {
       startRuntime?: () => Promise<{ keepAlive: Promise<void> }>;
       runInstaller?: (argv: string[]) => string;
+      runDoctor?: () => Promise<{ exitCode: number; output: string }>;
       stdout?: { write(chunk: string): unknown };
       stderr?: { write(chunk: string): unknown };
     }
@@ -228,6 +229,32 @@ describe("Phase 11.1 CLI entry point", () => {
       expect(exitCode).toBe(0);
       expect(startCalled).toBe(true);
       expect(keepAliveResolved).toBe(true);
+    });
+  });
+
+  // -- runCli(["doctor"]) ---------------------------------------------------
+
+  describe("runCli(['doctor'])", () => {
+    it("should call runDoctor, write its output to stdout, return its exitCode, write nothing to stderr", async () => {
+      const mod = await importCli();
+
+      let doctorCalled = false;
+      const stdoutChunks: string[] = [];
+      const stderrChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["doctor"], {
+        runDoctor: async () => {
+          doctorCalled = true;
+          return { exitCode: 0, output: "MICA doctor\nOK   Node version: 22.x\n" };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+        stderr: { write(chunk: string) { stderrChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(doctorCalled).toBe(true);
+      expect(stdoutChunks.join("")).toContain("MICA doctor");
+      expect(stderrChunks.join("")).toBe("");
     });
   });
 
