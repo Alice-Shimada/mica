@@ -3,9 +3,35 @@
   "version": "0.1.0",
   "description": "Local MCP bridge for controlling active Mathematica notebooks through a Wolfram Paclet Palette.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Alice-Shimada/mica.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Alice-Shimada/mica/issues"
+  },
+  "homepage": "https://github.com/Alice-Shimada/mica#readme",
+  "keywords": [
+    "mcp",
+    "wolfram",
+    "mathematica",
+    "notebook",
+    "agent"
+  ],
   "bin": {
     "mica": "dist/src/cli/index.js"
   },
+  "files": [
+    "dist/src",
+    "src/bun/index.ts",
+    "paclet",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "scripts/install.js"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start:mcp": "node dist/src/bun/index.js",

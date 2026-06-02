@@ -2,7 +2,7 @@
 
 **Mathematica Interactive Control Agent**
 
-[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?logo=node.js&logoColor=white)
 ![Bun](https://img.shields.io/badge/runtime-Bun-f3e7d3?logo=bun&logoColor=111111)
 ![MCP](https://img.shields.io/badge/protocol-MCP-2563eb)
@@ -263,4 +263,4 @@ Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
