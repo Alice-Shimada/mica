@@ -73,6 +73,8 @@ Dashboard:
 Use the `Dashboard: http://127.0.0.1:<port>/#token=<token>` URL printed by the MICA server.
 ```
 
+The dashboard is token-gated: opening `/` without the URL fragment does not fetch or display bridge data. With the printed token URL, it shows grouped diagnostics for Server, Security, Agents, Notebooks, and Requests. Click Agents or Notebooks to open a shared details panel below the overview cards.
+
 The installer edits only your per-user Wolfram `Kernel/init.m`, creates a timestamped backup, and prints MCP client config snippets. It does not edit system Wolfram files and does not edit MCP client configs for you.
 
 Dry run and uninstall:

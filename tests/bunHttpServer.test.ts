@@ -30,10 +30,12 @@ describe("Bun HTTP app", () => {
     const html = await response.text();
 
     expect(response.headers.get("content-type")).toContain("text/html");
-    expect(html).toContain("MMA Agent Bridge");
-    expect(html).toContain("Notebook Registry");
-    expect(html).toContain("Request Queue");
-    expect(html).toContain("Diagnostics");
+    expect(html).toContain("MICA Dashboard");
+    expect(html).toContain("Server");
+    expect(html).toContain("Security");
+    expect(html).toContain("Agents");
+    expect(html).toContain("Notebooks");
+    expect(html).toContain("Requests");
     expect(html).toContain("/status");
     expect(html).toContain("/notebooks");
     expect(html).toContain("Missing dashboard token. Open the dashboard URL printed by the MICA server.");
@@ -51,7 +53,7 @@ describe("Bun HTTP app", () => {
     const response = await fetch(`http://127.0.0.1:${server.port}/status`);
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ server: "running" });
+    await expect(response.json()).resolves.toMatchObject({ server: { state: "running" } });
   });
 
   it("requires Bearer authorization when an auth token is configured", async () => {
@@ -70,7 +72,7 @@ describe("Bun HTTP app", () => {
 
     const authorizedResponse = await fetch(`${base}/status`, { headers: { authorization: "Bearer secret-token" } });
     expect(authorizedResponse.status).toBe(200);
-    await expect(authorizedResponse.json()).resolves.toMatchObject({ server: "running" });
+    await expect(authorizedResponse.json()).resolves.toMatchObject({ server: { state: "running" } });
   });
 
   it("uses timing-safe comparison for configured Bearer tokens", () => {
@@ -87,8 +89,8 @@ describe("Bun HTTP app", () => {
 
     const statusResponse = await fetch(`${base}/status`);
     expect(statusResponse.headers.get("content-type")).toBe("application/json; charset=utf-8");
-    await expect(statusResponse.json()).resolves.toEqual({
-      server: "running",
+    await expect(statusResponse.json()).resolves.toMatchObject({
+      server: { state: "running" },
       agents: [],
       notebooks: [],
     });
@@ -995,7 +997,7 @@ describe("Bun HTTP app", () => {
     const statusResponse = await fetch(`${base}/status`);
     expect(statusResponse.status).toBe(200);
     await expect(statusResponse.json()).resolves.toMatchObject({
-      server: "running",
+      server: { state: "running" },
       agents: [
         expect.objectContaining({
           agentSessionId: "agent-scoped",
@@ -1064,6 +1066,130 @@ describe("Bun HTTP app", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ accepted: false, late: true });
     expect(state.queue.get("r1")).toMatchObject({ status: "cancelled" });
+  });
+
+  describe("Phase 13.1 dashboard productization", () => {
+    it("dashboard HTML includes module titles and shared detail panel structure", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const server = await createBunHttpApp({ state, port: 0 });
+      servers.push(server);
+
+      const response = await fetch(`http://127.0.0.1:${server.port}/`);
+      const html = await response.text();
+
+      // Module titles for the diagnostic overview grid
+      for (const title of ["Server", "Security", "Agents", "Notebooks", "Requests"]) {
+        expect(html).toContain(title);
+      }
+
+      // Shared detail panel below the grid
+      expect(html).toContain("detail-panel");
+      expect(html).toContain("detail-title");
+      expect(html).toContain("Collapse");
+
+      // Accessible affordances
+      expect(html).toContain("aria-controls");
+      expect(html).toContain("aria-expanded");
+
+      // Token must never appear as a literal in the HTML
+      expect(html).not.toMatch(/secret-token/);
+      expect(html).not.toMatch(/authToken\s*[:=]\s*["'][^"']+["']/);
+
+      // JS functions for the below-grid detail panel
+      expect(html).toMatch(/openDetail|activeDetail/);
+    });
+
+    it("dashboard HTML keeps auth gate with token extraction and no-fetch-before-token guard", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const server = await createBunHttpApp({ state, port: 0 });
+      servers.push(server);
+
+      const response = await fetch(`http://127.0.0.1:${server.port}/`);
+      const html = await response.text();
+
+      // Auth gate messaging
+      expect(html).toContain("Missing dashboard token");
+
+      // Token extraction from URL fragment
+      expect(html).toContain("location.hash");
+
+      // Authorization Bearer header construction
+      expect(html).toMatch(/Bearer\s+\$\{?token\}?/);
+
+      // requireDashboardToken guard prevents fetch before token
+      expect(html).toContain("requireDashboardToken");
+    });
+
+    it("/status with a configured auth token returns diagnostics metadata", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const now = Date.now();
+
+      // Register an agent and enqueue a request so queue snapshot is populated
+      state.agents.register({ agentSessionId: "agent-1", wolframVersion: "14.3", platform: "Windows", seenAt: now });
+      state.queue.enqueue({
+        requestId: "r-queued",
+        tool: "mma_list_cells",
+        arguments: {},
+        targetNotebookId: "n1",
+        agentSessionId: "agent-1",
+        timeoutMs: 5000,
+        createdAt: now,
+      });
+
+      const server = await createBunHttpApp({
+        state,
+        host: "127.0.0.1",
+        port: 0,
+        authToken: "secret-token",
+        version: "0.1.0",
+      });
+      servers.push(server);
+
+      const base = `http://127.0.0.1:${server.port}`;
+      const response = await fetch(`${base}/status`, {
+        headers: { authorization: "Bearer secret-token" },
+      });
+
+      expect(response.status).toBe(200);
+      const body = await response.json();
+
+      // Server metadata
+      expect(body.server).toBeDefined();
+      expect(body.server.state ?? body.server).toEqual(expect.stringMatching(/running/));
+      expect(body.server.version).toBe("0.1.0");
+      expect(body.server.pid).toEqual(expect.any(Number));
+      expect(body.server.host).toBe("127.0.0.1");
+      expect(body.server.port).toEqual(expect.any(Number));
+      expect(body.server.uptimeMs ?? body.server.uptime).toEqual(expect.any(Number));
+
+      // Security metadata
+      expect(body.security).toBeDefined();
+      expect(body.security.authEnabled).toBe(true);
+      expect(body.security.dashboardTokenPresent).toBe(true);
+
+      // Requests queue snapshot
+      expect(body.requests).toBeDefined();
+      expect(body.requests.queued).toEqual(expect.any(Number));
+      expect(body.requests.running).toEqual(expect.any(Number));
+      expect(body.requests.timed_out).toEqual(expect.any(Number));
+      expect(body.requests.cancelled).toEqual(expect.any(Number));
+      expect(body.requests.latestRequestIds).toEqual(expect.any(Array));
+      expect(body.requests.latestRequestIds).toContain("r-queued");
+    });
+
+    it("/status without authToken reports security.authEnabled false and dashboardTokenPresent false", async () => {
+      const state = new BackendState(() => "notebook-1");
+      const server = await createBunHttpApp({ state, port: 0 });
+      servers.push(server);
+
+      const response = await fetch(`http://127.0.0.1:${server.port}/status`);
+      expect(response.status).toBe(200);
+      const body = await response.json();
+
+      expect(body.security).toBeDefined();
+      expect(body.security.authEnabled).toBe(false);
+      expect(body.security.dashboardTokenPresent).toBe(false);
+    });
   });
 
   describe("Phase 8.1 degraded HTTP endpoints", () => {

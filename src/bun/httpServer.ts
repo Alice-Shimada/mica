@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BackendState } from "../backend/backendState.js";
-import type { AgentInfo } from "../backend/protocol.js";
+import type { AgentInfo, BackendRequest, BackendRequestStatus } from "../backend/protocol.js";
 import { renderDashboard } from "./dashboard.js";
 
 export type BunHttpApp = {
@@ -15,6 +15,15 @@ export type BunHttpAppOptions = {
   host?: string;
   port: number;
   authToken?: string;
+  version?: string;
+};
+
+type DashboardRuntimeInfo = {
+  host: string;
+  port: number;
+  authToken?: string;
+  version: string;
+  startedAtMs: number;
 };
 
 type RuntimeServer = {
@@ -44,15 +53,24 @@ type NotebookCloseBody = {
 type HiddenAgentResultBody = Record<string, unknown>;
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
+const DEFAULT_VERSION = "0.1.0";
 
-export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken }: BunHttpAppOptions): Promise<BunHttpApp> {
-  const fetchHandler = createFetchHandler(state, { authToken });
+export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken, version = DEFAULT_VERSION }: BunHttpAppOptions): Promise<BunHttpApp> {
+  const runtimeInfo: DashboardRuntimeInfo = {
+    host,
+    port,
+    authToken,
+    version,
+    startedAtMs: Date.now(),
+  };
+  const fetchHandler = createFetchHandler(state, runtimeInfo);
   const bun = (globalThis as typeof globalThis & {
     Bun?: { serve?: (options: { hostname: string; port: number; fetch: (request: Request) => Promise<Response> | Response }) => { port: number; stop: () => void | Promise<void> } };
   }).Bun;
 
   if (bun?.serve) {
     const server = bun.serve({ hostname: host, port, fetch: fetchHandler });
+    runtimeInfo.port = server.port;
     return {
       port: server.port,
       stop: async () => {
@@ -61,10 +79,20 @@ export async function createBunHttpApp({ state, host = "127.0.0.1", port, authTo
     };
   }
 
-  return startNodeFallbackServer(fetchHandler, host, port);
+  const nodeServer = await startNodeFallbackServer(fetchHandler, host, port);
+  runtimeInfo.port = nodeServer.port;
+  return nodeServer;
 }
 
-export function createFetchHandler(state: BackendState, options: { authToken?: string } = {}) {
+export function createFetchHandler(state: BackendState, options: Partial<DashboardRuntimeInfo> = {}) {
+  const runtimeInfo: DashboardRuntimeInfo = {
+    host: options.host ?? "127.0.0.1",
+    port: options.port ?? 19_791,
+    authToken: options.authToken,
+    version: options.version ?? DEFAULT_VERSION,
+    startedAtMs: options.startedAtMs ?? Date.now(),
+  };
+
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -79,7 +107,25 @@ export function createFetchHandler(state: BackendState, options: { authToken?: s
 
       if (request.method === "GET" && url.pathname === "/status") {
         state.sweepLiveness(Date.now());
-        return jsonResponse({ server: "running", agents: state.agents.list(), notebooks: state.notebooks.listLive() });
+        return jsonResponse({
+          server: {
+            state: "running",
+            version: runtimeInfo.version,
+            pid: process.pid,
+            host: runtimeInfo.host,
+            port: runtimeInfo.port,
+            uptimeMs: Math.max(0, Date.now() - runtimeInfo.startedAtMs),
+          },
+          security: {
+            authEnabled: Boolean(runtimeInfo.authToken),
+            // The dashboard uses the same generated bearer token as protocol endpoints.
+            // Keep this explicit so the UI can describe dashboard access without exposing it.
+            dashboardTokenPresent: Boolean(runtimeInfo.authToken),
+          },
+          agents: state.agents.list(),
+          notebooks: state.notebooks.listLive(),
+          requests: summarizeRequests(state.queue.snapshot()),
+        });
       }
 
       if (request.method === "POST" && url.pathname === "/agents/register") {
@@ -203,6 +249,17 @@ export function createFetchHandler(state: BackendState, options: { authToken?: s
 
       return jsonResponse({ error: { code: "INTERNAL_ERROR", message } }, 500);
     }
+  };
+}
+
+function summarizeRequests(snapshot: Record<BackendRequestStatus, BackendRequest[]>) {
+  const allRequests = Object.values(snapshot).flat().sort((a, b) => b.createdAt - a.createdAt);
+  return {
+    queued: snapshot.queued.length,
+    running: snapshot.running.length,
+    timed_out: snapshot.timed_out.length,
+    cancelled: snapshot.cancelled.length,
+    latestRequestIds: allRequests.slice(0, 5).map((request) => request.requestId),
   };
 }
 
