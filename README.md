@@ -9,18 +9,30 @@
 ![Wolfram Desktop](https://img.shields.io/badge/Wolfram%20Desktop-14.1%2B-dd1100)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-111827)
 
-MICA lets an MCP-capable coding agent control the Mathematica notebook you already have open: list notebooks, inspect cells, insert code, run evaluations, read outputs/messages, abort long computations, and look up Wolfram Language symbols without writing `.nb` files directly.
+MICA is a local MCP bridge for Wolfram Desktop / Mathematica. It lets an MCP-capable coding agent work through the notebook you already have open: list notebooks, inspect cells, insert and edit code, run evaluations, read outputs/messages, abort long computations, and look up Wolfram Language documentation without directly writing `.nb` files or launching a detached `wolframscript` workflow.
 
 ![MICA architecture hero](docs/assets/mica-readme-hero.png)
 
 ## Why MICA?
 
-- **Works in real notebooks**: the agent acts on visible Wolfram Desktop notebooks instead of a detached headless kernel.
-- **Agent-friendly workflow**: `mma_status`, `mma_list_notebooks`, structured errors, and a built-in MCP prompt tell the agent how to proceed.
+- **Works in real notebooks**: the agent acts on visible Wolfram Desktop notebooks, not a detached headless kernel.
+- **Human-visible agent work**: inserted code, outputs, messages, and edits appear in the notebook where you can review them.
+- **Notebook-aware targeting**: agents can list open notebooks, select the intended notebook, and use strict targeting for mutating tools.
+- **Agent-friendly protocol**: `mma_status`, `mma_list_notebooks`, structured errors, bounded outputs, artifact paging, and the `mica_notebook_workflow` prompt tell agents how to proceed safely.
 - **Permission-gated control**: read, insert, modify, delete, run, and save permissions are explicit.
-- **No raw eval endpoint**: code execution happens through notebook cells, so the interaction stays inspectable.
-- **Local-first**: the bridge binds to `127.0.0.1`; notebook files are not edited by the Node/Bun process.
-- **Release-minded**: install/uninstall is reversible and keeps timestamped `Kernel/init.m` backups.
+- **Local-first security model**: the bridge binds to `127.0.0.1`, uses a generated bearer token, and does not include a remote access mode.
+- **Release-minded install path**: install/uninstall is reversible and keeps timestamped `Kernel/init.m` backups.
+
+## Why work through the notebook you already have open?
+
+Traditional automation usually copies code into a separate script or starts a headless kernel. That is useful for batch jobs, but it loses the context that makes notebooks valuable. MICA keeps the agent in the same FrontEnd workflow you are using.
+
+- **Preserves live context**: definitions, prior cells, rich outputs, messages, and notebook structure stay in the real working notebook.
+- **Keeps the human in the loop**: you can watch what the agent inserts, interrupt a long evaluation, edit a cell yourself, or rerun something manually.
+- **Improves auditability**: code execution happens as notebook cells instead of an opaque raw-eval endpoint, leaving visible cells and outputs behind.
+- **Reduces context loss**: the agent can read nearby cells, outputs, and messages before deciding what to do next.
+- **Handles multiple notebooks**: the agent can discover open notebooks and target the intended one by current `notebookId` or display name.
+- **Fits exploratory Wolfram work**: plots, dynamic output, formatted boxes, and FrontEnd notebook operations remain part of the workflow.
 
 ## How It Works
 
@@ -29,7 +41,7 @@ MCP client / coding agent
         |
         | stdio MCP
         v
-Bun MCP server + localhost dashboard
+MICA MCP server + localhost dashboard
         |
         | HTTP queue on 127.0.0.1:19791
         v
@@ -48,10 +60,12 @@ The hidden Wolfram agent runs from a dedicated `MMAAgentControl` FrontEnd evalua
 | --- | --- |
 | Wolfram Desktop / Mathematica | 14.1+ supported. 13.x / 14.0 experimental (may work but not formally tested). Headless Wolfram Engine is not supported for live notebook control. |
 | Node.js | 20 or newer. |
-| Bun | Optional. Used for development hot-reload (`npm run dev:mcp`). Production path uses Node. |
+| Bun | Optional. Used for Bun development scripts. The release CLI runs through Node. |
 | MCP client | Codex, Claude Desktop, Cursor, or any stdio MCP client. |
 
 ## Quick Start
+
+From a release checkout:
 
 ```bash
 git clone https://github.com/Alice-Shimada/mica.git
@@ -65,6 +79,14 @@ Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP serv
 
 ```bash
 node dist/src/cli/index.js start
+```
+
+If MICA is installed on your `PATH`, the same release commands are:
+
+```bash
+mica install
+mica start
+mica doctor
 ```
 
 Dashboard:
@@ -88,20 +110,20 @@ The legacy installer entry remains available for compatibility: `node scripts/in
 
 ## MCP Client Config
 
-Use the built Node entrypoint from your local checkout:
+Use the built release entrypoint from your local checkout:
 
 ```toml
 [mcp_servers.mica]
 command = "node"
-args = ["/absolute/path/to/mica/dist/src/bun/index.js"]
+args = ["/absolute/path/to/mica/dist/src/cli/index.js", "start"]
 ```
 
-For development with hot-reload, use Bun:
+For development, you can point an MCP client at the TypeScript entrypoint:
 
 ```toml
 [mcp_servers.mica]
-command = "bun"
-args = ["run", "/absolute/path/to/mica/src/bun/index.ts"]
+command = "npx"
+args = ["tsx", "/absolute/path/to/mica/src/bun/index.ts"]
 ```
 
 ## Agent Guide Prompt
@@ -177,17 +199,19 @@ MMAAgentBridge`StartMMAAgentControlKernel[]
 npm test
 npm run typecheck
 npm run build
-npm run dev:bun
-npm run dev:bun:mcp
+npm run dev:mcp
+npm run dev:bridge
 ```
 
 Common commands:
 
 | Command | Use |
 | --- | --- |
-| `npm run dev:bun` | Start the Bun runtime and dashboard without stdio MCP. |
-| `npm run dev:bun:mcp` | Start the primary Bun MCP server. |
-| `npm run dev` | Start the legacy Node HTTP bridge for Palette compatibility testing. |
+| `npm run dev:mcp` | Start the TypeScript MCP server through `tsx`. |
+| `npm run dev:bridge` | Start the TypeScript bridge and dashboard without stdio MCP. |
+| `npm run dev:bun:mcp` | Start the MCP server through Bun. |
+| `npm run dev:bun` | Start the bridge and dashboard through Bun without stdio MCP. |
+| `npm run dev:legacy` | Start the legacy Node HTTP bridge for Palette compatibility testing. |
 | `npm run build` | Emit production JavaScript under `dist/`. |
 
 ## Verification Checklist
@@ -196,17 +220,18 @@ Common commands:
 npm test
 npm run typecheck
 npm run build
-node scripts/install.js --dry-run
+node dist/src/cli/index.js install --dry-run
+node dist/src/cli/index.js doctor
 ```
 
 Live smoke test:
 
-1. Run `node scripts/install.js`.
+1. Run `node dist/src/cli/index.js install`.
 2. Fully restart Wolfram Desktop.
 3. Open a notebook.
 4. Confirm `mma_status` reports an online agent and a registered notebook.
 5. Confirm insert, read, modify, run, get-output, delete, abort, and symbol lookup work against that notebook.
-6. Run `node scripts/install.js --uninstall` and confirm the marked block is removed from `Kernel/init.m`.
+6. Run `node dist/src/cli/index.js uninstall` and confirm the marked block is removed from `Kernel/init.m`.
 
 See also:
 
@@ -261,7 +286,7 @@ Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`
 - Cancellation is best-effort when the Wolfram kernel is already busy.
 - Cell ids are session-local and can change after reopening a notebook.
 - FrontEnd notebook operations are currently serialized.
-- The legacy Palette flow remains only for compatibility during migration.
+- The legacy Palette flow remains only for compatibility during migration; the documented release path is the CLI plus MCP server.
 
 ## License
 
