@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.4 - 2026-06-06
+
+- Remove legacy dead code from npm package (bridge, legacy tools, stop command, runtimeOptions, types).
+- Tighten `files` field to only include active runtime directories.
+
 ## 1.0.3 - 2026-06-06
 
 - Deprecate `mica start`, `mica stop`, and `mica restart` commands.

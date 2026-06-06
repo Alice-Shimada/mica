@@ -27,8 +27,8 @@ describe("package.json metadata", () => {
     expect(pkg.name).toBe("@aliceshimada/mica");
   });
 
-  it("has version 1.0.3", () => {
-    expect(pkg.version).toBe("1.0.3");
+  it("has version 1.0.4", () => {
+    expect(pkg.version).toBe("1.0.4");
   });
 
   it("has repository pointing to Alice-Shimada/mica", () => {
@@ -56,12 +56,14 @@ describe("package.json metadata", () => {
     );
   });
 
-  it("has files including dist/src, paclet, bilingual READMEs, LICENSE, and scripts/install.js", () => {
+  it("has files including dist/src subdirectories, paclet, bilingual READMEs, LICENSE, and scripts/install.js", () => {
     const files = pkg.files as string[] | undefined;
     expect(files).toBeDefined();
     expect(files).toEqual(
-      expect.arrayContaining(["dist/src", "paclet", "README.md", "README.zh-CN.md", "LICENSE", "scripts/install.js"])
+      expect.arrayContaining(["dist/src/backend", "dist/src/bun", "dist/src/cli", "dist/src/mcp", "dist/src/runtime", "paclet", "README.md", "README.zh-CN.md", "LICENSE", "scripts/install.js"])
     );
+    // legacy dead code must not be included
+    expect(files).not.toEqual(expect.arrayContaining(["dist/src"]));
   });
 });
 

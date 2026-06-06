@@ -1,6 +1,6 @@
 {
   "name": "@aliceshimada/mica",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Local MCP bridge for controlling live Wolfram Desktop / Mathematica notebooks.",
   "type": "module",
   "repository": {
@@ -22,7 +22,13 @@
     "mica": "dist/src/cli/index.js"
   },
   "files": [
-    "dist/src",
+    "dist/src/backend",
+    "dist/src/bun",
+    "dist/src/cli",
+    "!dist/src/cli/stop.js",
+    "dist/src/mcp",
+    "!dist/src/mcp/tools.js",
+    "dist/src/runtime",
     "paclet",
     "README.md",
     "README.zh-CN.md",
