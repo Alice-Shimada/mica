@@ -3,6 +3,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import type { BackendState } from "../backend/backendState.js";
 import type { AgentInfo, BackendRequest, BackendRequestStatus } from "../backend/protocol.js";
+import { executeBackendMcpTool } from "../mcp/backendTools.js";
 import { renderDashboard } from "./dashboard.js";
 
 export type BunHttpApp = {
@@ -51,9 +52,14 @@ type NotebookCloseBody = {
   agentSessionId?: unknown;
 };
 type HiddenAgentResultBody = Record<string, unknown>;
+type McpCallBody = {
+  tool?: unknown;
+  arguments?: unknown;
+  clientSessionId?: unknown;
+};
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
-const DEFAULT_VERSION = "1.0.1";
+const DEFAULT_VERSION = "1.0.2";
 
 export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken, version = DEFAULT_VERSION }: BunHttpAppOptions): Promise<BunHttpApp> {
   const runtimeInfo: DashboardRuntimeInfo = {
@@ -126,6 +132,15 @@ export function createFetchHandler(state: BackendState, options: Partial<Dashboa
           notebooks: state.notebooks.listLive(),
           requests: summarizeRequests(state.queue.snapshot()),
         });
+      }
+
+      if (request.method === "POST" && url.pathname === "/mcp/call") {
+        const body = await readJsonObjectBody<McpCallBody>(request);
+        const tool = readRequiredString(body.tool, "tool");
+        const args = readOptionalRecord(body.arguments) ?? {};
+        const clientSessionId = readOptionalString(body.clientSessionId);
+        const result = await executeBackendMcpTool(state, tool, args, { sessionId: clientSessionId });
+        return jsonResponse(result);
       }
 
       if (request.method === "POST" && url.pathname === "/agents/register") {
@@ -291,6 +306,8 @@ async function startNodeFallbackServer(fetchHandler: (request: Request) => Promi
       await writeNodeResponse(outgoing, jsonResponse({ error: { code: "INTERNAL_ERROR", message } }, 500));
     }
   });
+  server.timeout = 0;
+  server.requestTimeout = 0;
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -399,6 +416,12 @@ function readOptionalString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim();
   return text ? text : undefined;
+}
+
+function readOptionalRecord(value: unknown): Record<string, unknown> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("BAD_REQUEST");
+  return value as Record<string, unknown>;
 }
 
 function readOptionalNumber(value: unknown): number | undefined {

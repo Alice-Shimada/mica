@@ -16,7 +16,7 @@ export function runConfigCommand(argv: string[]): CliConfigResult {
   }
 
   if (client === "codex") {
-    return ok(`[mcp_servers.mica]\ncommand = "mica"\nargs = ["start"]\n`);
+    return ok(`[mcp_servers.mica]\ncommand = "mica"\nargs = ["mcp"]\n`);
   }
 
   if (client === "opencode") {
@@ -25,7 +25,7 @@ export function runConfigCommand(argv: string[]): CliConfigResult {
       mcp: {
         mica: {
           type: "local",
-          command: ["mica", "start"],
+          command: ["mica", "mcp"],
           enabled: true,
         },
       },
@@ -36,7 +36,7 @@ export function runConfigCommand(argv: string[]): CliConfigResult {
     mcpServers: {
       mica: {
         command: "mica",
-        args: ["start"],
+        args: ["mcp"],
       },
     },
   }, null, 2)}\n`);

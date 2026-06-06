@@ -20,6 +20,15 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.stop()));
 });
 
+async function waitForQueuedCount(state: BackendState, count: number): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (state.queue.snapshot().queued.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+
+  throw new Error(`expected ${count} queued requests, got ${state.queue.snapshot().queued.length}`);
+}
+
 describe("Bun HTTP app", () => {
   it("serves a local dashboard shell", async () => {
     const state = new BackendState(() => "notebook-1");
@@ -73,6 +82,83 @@ describe("Bun HTTP app", () => {
     const authorizedResponse = await fetch(`${base}/status`, { headers: { authorization: "Bearer secret-token" } });
     expect(authorizedResponse.status).toBe(200);
     await expect(authorizedResponse.json()).resolves.toMatchObject({ server: { state: "running" } });
+  });
+
+  it("requires Bearer authorization for MCP proxy calls", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0, authToken: "secret-token" });
+    servers.push(server);
+
+    const response = await fetch(`http://127.0.0.1:${server.port}/mcp/call`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tool: "mma_status", arguments: {} }),
+    });
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: { code: "UNAUTHORIZED" } });
+  });
+
+  it("executes mma_status through the MCP proxy endpoint with a valid token", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const server = await createBunHttpApp({ state, port: 0, authToken: "secret-token" });
+    servers.push(server);
+
+    const response = await fetch(`http://127.0.0.1:${server.port}/mcp/call`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: "Bearer secret-token" },
+      body: JSON.stringify({ tool: "mma_status", arguments: {}, clientSessionId: "client-1" }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      structuredContent: { ok: true, server: "running", notebooks: [], agents: [] },
+      content: [expect.objectContaining({ type: "text" })],
+    });
+  });
+
+  it("routes concurrent MCP proxy calls through the same BackendState queue", async () => {
+    const state = new BackendState(() => "notebook-1");
+    const now = Date.now();
+    state.agents.register({ agentSessionId: "agent-1", wolframVersion: "14.3", platform: "Windows", seenAt: now });
+    const notebook = state.notebooks.upsertHeartbeat({
+      agentSessionId: "agent-1",
+      frontendObjectKey: "fe-1",
+      displayName: "Shared.nb",
+      windowTitle: "Shared.nb",
+      wolframVersion: "14.3",
+      platform: "Windows",
+      permissions,
+      seenAt: now,
+    });
+    state.activeNotebookId = notebook.notebookId;
+
+    const server = await createBunHttpApp({ state, port: 0, authToken: "secret-token" });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+    const call = (clientSessionId: string) =>
+      fetch(`${base}/mcp/call`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer secret-token" },
+        body: JSON.stringify({ tool: "mma_list_cells", arguments: {}, clientSessionId }),
+      }).then((response) => response.json());
+
+    const first = call("client-1");
+    const second = call("client-2");
+    await waitForQueuedCount(state, 2);
+
+    const queued = state.queue.snapshot().queued;
+    expect(queued).toHaveLength(2);
+    expect(queued[0]).toMatchObject({ tool: "mma_list_cells", targetNotebookId: notebook.notebookId });
+    expect(queued[1]).toMatchObject({ tool: "mma_list_cells", targetNotebookId: notebook.notebookId });
+
+    state.queue.resolve(queued[0]!.requestId, { cells: [{ cellId: "cell-1" }] }, now + 1);
+    state.queue.resolve(queued[1]!.requestId, { cells: [{ cellId: "cell-2" }] }, now + 2);
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ structuredContent: expect.objectContaining({ ok: true, cells: [{ cellId: "cell-1" }] }) }),
+      expect.objectContaining({ structuredContent: expect.objectContaining({ ok: true, cells: [{ cellId: "cell-2" }] }) }),
+    ]);
   });
 
   it("uses timing-safe comparison for configured Bearer tokens", () => {

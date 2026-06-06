@@ -149,7 +149,7 @@ OpenCode 的 snippet 使用经过验证的 local MCP 形状：
   "mcp": {
     "mica": {
       "type": "local",
-      "command": ["mica", "start"],
+      "command": ["mica", "mcp"],
       "enabled": true
     }
   }
@@ -163,7 +163,7 @@ OpenCode 的 snippet 使用经过验证的 local MCP 形状：
 ```toml
 [mcp_servers.mica]
 command = "node"
-args = ["/absolute/path/to/mica/dist/src/cli/index.js", "start"]
+args = ["/absolute/path/to/mica/dist/src/cli/index.js", "mcp"]
 ```
 
 开发时也可以让 MCP client 指向 TypeScript 入口：
@@ -171,7 +171,7 @@ args = ["/absolute/path/to/mica/dist/src/cli/index.js", "start"]
 ```toml
 [mcp_servers.mica]
 command = "npx"
-args = ["tsx", "/absolute/path/to/mica/src/bun/index.ts"]
+args = ["tsx", "/absolute/path/to/mica/src/cli/index.ts", "mcp"]
 ```
 
 ## Agent Guide Prompt

@@ -24,6 +24,9 @@ type CliModule = {
       runStatus?: () => Promise<{ exitCode: number; output: string; running?: boolean }>;
       runConfig?: (argv: string[]) => { exitCode: number; output: string };
       runStop?: () => Promise<{ exitCode: number; output: string }>;
+      readLiveSession?: () => Promise<{ baseUrl: string; authToken: string } | undefined>;
+      startProxyRuntime?: (session: { baseUrl: string; authToken: string }) => Promise<{ keepAlive: Promise<void> }>;
+      sleep?: (ms: number) => Promise<void>;
       stdout?: { write(chunk: string): unknown };
       stderr?: { write(chunk: string): unknown };
     }
@@ -304,7 +307,7 @@ describe("Phase 11.1 CLI entry point", () => {
       const exitCode = await mod.runCli(["config", "opencode"], {
         runConfig: (argv: string[]) => {
           receivedArgs = argv;
-          return { exitCode: 0, output: '{"mcp":{"mica":{"type":"local","command":["mica","start"]}}}\n' };
+          return { exitCode: 0, output: '{"mcp":{"mica":{"type":"local","command":["mica","mcp"]}}}\n' };
         },
         stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
       });
@@ -312,7 +315,104 @@ describe("Phase 11.1 CLI entry point", () => {
       expect(exitCode).toBe(0);
       expect(receivedArgs).toEqual(["opencode"]);
       expect(stdoutChunks.join("")).toContain('"type":"local"');
-      expect(stdoutChunks.join("")).toContain('"command":["mica","start"]');
+      expect(stdoutChunks.join("")).toContain('"command":["mica","mcp"]');
+    });
+  });
+
+  describe("runCli(['config']) MCP snippets", () => {
+    it("runConfigCommand prints mica mcp for Codex, Claude Desktop, Cursor, and OpenCode", async () => {
+      const { runConfigCommand } = await import("../../src/cli/configSnippets.js");
+      const clients = ["codex", "claude-desktop", "cursor", "opencode"];
+
+      for (const client of clients) {
+        const { exitCode, output } = runConfigCommand([client]);
+
+        expect(exitCode).toBe(0);
+        expect(output).toContain("mcp");
+        expect(output).not.toContain("start");
+      }
+    });
+  });
+
+  describe("runCli(['mcp'])", () => {
+    it("starts a stdio proxy without stdout status text when a live bridge exists", async () => {
+      const mod = await importCli();
+      const session = { baseUrl: "http://127.0.0.1:19791", authToken: "test-token" };
+      let startCalled = false;
+      let proxySession: typeof session | undefined;
+      const stdoutChunks: string[] = [];
+
+      const exitCode = await mod.runCli(["mcp"], {
+        readLiveSession: async () => session,
+        startRuntime: async () => {
+          startCalled = true;
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async (receivedSession) => {
+          proxySession = receivedSession;
+          return { keepAlive: Promise.resolve() };
+        },
+        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(startCalled).toBe(false);
+      expect(proxySession).toEqual(session);
+      expect(stdoutChunks.join("")).toBe("");
+    });
+
+    it("starts the full runtime when no live bridge exists", async () => {
+      const mod = await importCli();
+      let startCalled = false;
+      let proxyCalled = false;
+
+      const exitCode = await mod.runCli(["mcp"], {
+        readLiveSession: async () => undefined,
+        startRuntime: async () => {
+          startCalled = true;
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async () => {
+          proxyCalled = true;
+          return { keepAlive: Promise.resolve() };
+        },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(startCalled).toBe(true);
+      expect(proxyCalled).toBe(false);
+    });
+
+    it("falls back to proxy when full runtime startup races with an existing bridge", async () => {
+      const mod = await importCli();
+      const session = { baseUrl: "http://127.0.0.1:19791", authToken: "test-token" };
+      let liveSessionReads = 0;
+      let proxySession: typeof session | undefined;
+      let sleepCalls = 0;
+      const error = Object.assign(new Error("listen EADDRINUSE: address already in use 127.0.0.1:19791"), {
+        code: "EADDRINUSE",
+      });
+
+      const exitCode = await mod.runCli(["mcp"], {
+        readLiveSession: async () => {
+          liveSessionReads += 1;
+          return liveSessionReads >= 2 ? session : undefined;
+        },
+        startRuntime: async () => {
+          throw error;
+        },
+        startProxyRuntime: async (receivedSession) => {
+          proxySession = receivedSession;
+          return { keepAlive: Promise.resolve() };
+        },
+        sleep: async () => {
+          sleepCalls += 1;
+        },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(sleepCalls).toBe(1);
+      expect(proxySession).toEqual(session);
     });
   });
 

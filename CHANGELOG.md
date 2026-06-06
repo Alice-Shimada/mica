@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 - 2026-06-06
+
+- Add `mica mcp` command: starts an MCP stdio server that proxies to an existing bridge or starts a new one.
+- Add `/mcp/call` HTTP endpoint for proxied MCP tool execution.
+- Refactor backend tools to export `MICA_BACKEND_TOOL_DEFINITIONS` and `executeBackendMcpTool()` for reuse.
+- Update config snippets to use `mica mcp` instead of `mica start`.
+
 ## 1.0.1 - 2026-06-02
 
 - Implement `mica status`, including dashboard token recovery from the current session.

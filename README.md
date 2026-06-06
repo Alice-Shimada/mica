@@ -149,7 +149,7 @@ For OpenCode, the snippet uses the validated local MCP shape:
   "mcp": {
     "mica": {
       "type": "local",
-      "command": ["mica", "start"],
+      "command": ["mica", "mcp"],
       "enabled": true
     }
   }
@@ -163,7 +163,7 @@ For manual setup from a local checkout, use the built release entrypoint:
 ```toml
 [mcp_servers.mica]
 command = "node"
-args = ["/absolute/path/to/mica/dist/src/cli/index.js", "start"]
+args = ["/absolute/path/to/mica/dist/src/cli/index.js", "mcp"]
 ```
 
 For development, you can point an MCP client at the TypeScript entrypoint:
@@ -171,7 +171,7 @@ For development, you can point an MCP client at the TypeScript entrypoint:
 ```toml
 [mcp_servers.mica]
 command = "npx"
-args = ["tsx", "/absolute/path/to/mica/src/bun/index.ts"]
+args = ["tsx", "/absolute/path/to/mica/src/cli/index.ts", "mcp"]
 ```
 
 ## Agent Guide Prompt

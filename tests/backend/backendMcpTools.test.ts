@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { z, type ZodRawShape } from "zod";
 import { BackendState } from "../../src/backend/backendState.js";
-import { registerBackendMcpTools, resolveToolTarget } from "../../src/mcp/backendTools.js";
+import { executeBackendMcpTool, registerBackendMcpTools, resolveToolTarget } from "../../src/mcp/backendTools.js";
 
 function makeState() {
   let nextNotebookId = 0;
@@ -203,6 +203,27 @@ describe("backend MCP tool registration", () => {
       "mma_read_artifact",
       "mma_save_notebook",
     ]);
+  });
+
+  it("executeBackendMcpTool exposes the same queued tool behavior for HTTP proxy calls", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });
+    state.activeNotebookId = notebook.notebookId;
+
+    const pending = executeBackendMcpTool(state, "mma_list_cells", {}, { sessionId: "client-1" });
+    const queued = state.queue.snapshot().queued[0];
+    if (!queued) throw new Error("expected queued request");
+
+    expect(queued).toMatchObject({
+      tool: "mma_list_cells",
+      targetNotebookId: notebook.notebookId,
+      agentSessionId: "agent-1",
+    });
+
+    state.queue.resolve(queued.requestId, { cells: [] }, Date.now() + 1);
+    await expect(pending).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ ok: true, cells: [] }),
+    });
   });
 
   it("surfaces notebook workflow guidance in backend MCP tool descriptions", () => {
