@@ -44,7 +44,7 @@ export async function runStatusCommand(deps: CliStatusDeps = {}): Promise<CliSta
 
   if (!_exists(sessionFile)) {
     fail("Session file", `${sessionFile} (not found)`);
-    lines.push("FIX  Run: mica start");
+    lines.push("FIX  Run: mica mcp");
     return result(1, lines, false);
   }
 
@@ -53,7 +53,7 @@ export async function runStatusCommand(deps: CliStatusDeps = {}): Promise<CliSta
     session = JSON.parse(_readFile(sessionFile)) as SessionData;
   } catch (error) {
     fail("Session file", error instanceof Error ? error.message : String(error));
-    lines.push("FIX  Run: mica start");
+    lines.push("FIX  Run: mica mcp");
     return result(1, lines, false);
   }
 
@@ -63,7 +63,7 @@ export async function runStatusCommand(deps: CliStatusDeps = {}): Promise<CliSta
 
   if (!session.authToken) {
     fail("Auth token", "missing in session file");
-    lines.push("FIX  Restart MICA with: mica start");
+    lines.push("FIX  Restart MICA with: mica mcp");
     return result(1, lines, false);
   }
 
@@ -79,13 +79,13 @@ export async function runStatusCommand(deps: CliStatusDeps = {}): Promise<CliSta
 
     if (response.status === 401) {
       fail("Auth token", "401 Unauthorized");
-      lines.push("FIX  Restart MICA with: mica start");
+      lines.push("FIX  Restart MICA with: mica mcp");
       return result(1, lines, false);
     }
 
     if (response.status !== 200) {
       fail("Server /status reachable", `HTTP ${response.status}`);
-      lines.push("FIX  Run: mica start");
+      lines.push("FIX  Run: mica mcp");
       return result(1, lines, false);
     }
 
@@ -104,7 +104,7 @@ export async function runStatusCommand(deps: CliStatusDeps = {}): Promise<CliSta
     return result(0, lines, true);
   } catch (error) {
     fail("Server /status reachable", error instanceof Error ? error.message : String(error));
-    lines.push("FIX  Run: mica start");
+    lines.push("FIX  Run: mica mcp");
     return result(1, lines, false);
   }
 }

@@ -23,7 +23,6 @@ type CliModule = {
       runDoctor?: () => Promise<{ exitCode: number; output: string }>;
       runStatus?: () => Promise<{ exitCode: number; output: string; running?: boolean }>;
       runConfig?: (argv: string[]) => { exitCode: number; output: string };
-      runStop?: () => Promise<{ exitCode: number; output: string }>;
       readLiveSession?: () => Promise<{ baseUrl: string; authToken: string } | undefined>;
       startProxyRuntime?: (session: { baseUrl: string; authToken: string }) => Promise<{ keepAlive: Promise<void> }>;
       sleep?: (ms: number) => Promise<void>;
@@ -92,7 +91,7 @@ describe("Phase 11.1 CLI entry point", () => {
 
       expect(text).toMatch(/Usage:\s+mica/);
 
-      const commands = ["start", "stop", "restart", "install", "uninstall", "doctor", "status"];
+      const commands = ["mcp", "install", "uninstall", "doctor", "status"];
       for (const cmd of commands) {
         expect(text).toMatch(new RegExp(cmd));
       }
@@ -101,6 +100,11 @@ describe("Phase 11.1 CLI entry point", () => {
       expect(text).toMatch(/config\s+claude-desktop/);
       expect(text).toMatch(/config\s+cursor/);
       expect(text).toMatch(/config\s+opencode/);
+
+      // deprecated commands should not appear
+      expect(text).not.toMatch(/\bstart\b/);
+      expect(text).not.toMatch(/\bstop\b/);
+      expect(text).not.toMatch(/\brestart\b/);
     });
   });
 
@@ -182,90 +186,101 @@ describe("Phase 11.1 CLI entry point", () => {
     });
   });
 
-  // -- runCli([]) – default / no args ---------------------------------------
+  // -- runCli([]) – no args now behaves like mcp ---------------------------
 
   describe("runCli([])", () => {
-    it("should call startRuntime(), await keepAlive, return 0", async () => {
+    it("should proxy to existing bridge when a live session exists", async () => {
       const mod = await importCli();
-
+      const session = { baseUrl: "http://127.0.0.1:19791", authToken: "test-token" };
       let startCalled = false;
-      let keepAliveResolved = false;
-      const stdoutChunks: string[] = [];
-      const keepAlivePromise = new Promise<void>((resolve) => {
-        // resolve after a tick so the test can observe the await
-        setTimeout(() => {
-          keepAliveResolved = true;
-          resolve();
-        }, 0);
-      });
+      let proxySession: typeof session | undefined;
 
       const exitCode = await mod.runCli([], {
+        readLiveSession: async () => session,
         startRuntime: async () => {
           startCalled = true;
-          return { keepAlive: keepAlivePromise };
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async (receivedSession) => {
+          proxySession = receivedSession;
+          return { keepAlive: Promise.resolve() };
+        },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(startCalled).toBe(false);
+      expect(proxySession).toEqual(session);
+    });
+
+    it("should start full runtime when no live bridge exists", async () => {
+      const mod = await importCli();
+      let startCalled = false;
+      let proxyCalled = false;
+
+      const exitCode = await mod.runCli([], {
+        readLiveSession: async () => undefined,
+        startRuntime: async () => {
+          startCalled = true;
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async () => {
+          proxyCalled = true;
+          return { keepAlive: Promise.resolve() };
         },
       });
 
       expect(exitCode).toBe(0);
       expect(startCalled).toBe(true);
-      expect(keepAliveResolved).toBe(true);
+      expect(proxyCalled).toBe(false);
     });
   });
 
-  // -- runCli(["start"]) ----------------------------------------------------
+  // -- runCli(["start"]) – alias for mcp -----------------------------------
 
   describe("runCli(['start'])", () => {
-    it("should behave identically to no-args: call startRuntime(), await keepAlive, return 0", async () => {
+    it("should proxy to existing bridge when a live session exists", async () => {
       const mod = await importCli();
-
+      const session = { baseUrl: "http://127.0.0.1:19791", authToken: "test-token" };
       let startCalled = false;
-      let keepAliveResolved = false;
-      const keepAlivePromise = new Promise<void>((resolve) => {
-        setTimeout(() => {
-          keepAliveResolved = true;
-          resolve();
-        }, 0);
-      });
+      let proxySession: typeof session | undefined;
 
       const exitCode = await mod.runCli(["start"], {
+        readLiveSession: async () => session,
         startRuntime: async () => {
           startCalled = true;
-          return { keepAlive: keepAlivePromise };
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async (receivedSession) => {
+          proxySession = receivedSession;
+          return { keepAlive: Promise.resolve() };
+        },
+      });
+
+      expect(exitCode).toBe(0);
+      expect(startCalled).toBe(false);
+      expect(proxySession).toEqual(session);
+    });
+
+    it("should start full runtime when no live bridge exists", async () => {
+      const mod = await importCli();
+      let startCalled = false;
+      let proxyCalled = false;
+
+      const exitCode = await mod.runCli(["start"], {
+        readLiveSession: async () => undefined,
+        startRuntime: async () => {
+          startCalled = true;
+          return { keepAlive: Promise.resolve() };
+        },
+        startProxyRuntime: async () => {
+          proxyCalled = true;
+          return { keepAlive: Promise.resolve() };
         },
       });
 
       expect(exitCode).toBe(0);
       expect(startCalled).toBe(true);
-      expect(keepAliveResolved).toBe(true);
-    });
-
-    it("should print existing status and not start a new runtime when a server is already running", async () => {
-      const mod = await importCli();
-
-      let startCalled = false;
-      let statusCalled = false;
-      const stdoutChunks: string[] = [];
-
-      const exitCode = await mod.runCli(["start"], {
-        startRuntime: async () => {
-          startCalled = true;
-          return { keepAlive: new Promise(() => {}) };
-        },
-        runStatus: async () => {
-          statusCalled = true;
-          return {
-            exitCode: 0,
-            output: "MICA status\nDashboard: http://127.0.0.1:19791/#token=test-token\n",
-            running: true,
-          };
-        },
-        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
-      });
-
-      expect(exitCode).toBe(0);
-      expect(statusCalled).toBe(true);
-      expect(startCalled).toBe(false);
-      expect(stdoutChunks.join("")).toContain("#token=test-token");
+      expect(proxyCalled).toBe(false);
     });
   });
 
@@ -413,63 +428,6 @@ describe("Phase 11.1 CLI entry point", () => {
       expect(exitCode).toBe(0);
       expect(sleepCalls).toBe(1);
       expect(proxySession).toEqual(session);
-    });
-  });
-
-  // -- runCli(["stop"]) -----------------------------------------------------
-
-  describe("runCli(['stop'])", () => {
-    it("should call runStop, write its output to stdout, and return its exitCode", async () => {
-      const mod = await importCli();
-
-      let stopCalled = false;
-      const stdoutChunks: string[] = [];
-
-      const exitCode = await mod.runCli(["stop"], {
-        runStop: async () => {
-          stopCalled = true;
-          return { exitCode: 0, output: "MICA stopped\n" };
-        },
-        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
-      });
-
-      expect(exitCode).toBe(0);
-      expect(stopCalled).toBe(true);
-      expect(stdoutChunks.join("")).toContain("MICA stopped");
-    });
-  });
-
-  // -- runCli(["restart"]) --------------------------------------------------
-
-  describe("runCli(['restart'])", () => {
-    it("should stop first, then start the runtime", async () => {
-      const mod = await importCli();
-
-      const calls: string[] = [];
-      let keepAliveResolved = false;
-      const stdoutChunks: string[] = [];
-      const keepAlivePromise = new Promise<void>((resolve) => {
-        setTimeout(() => {
-          keepAliveResolved = true;
-          resolve();
-        }, 0);
-      });
-
-      const exitCode = await mod.runCli(["restart"], {
-        runStop: async () => {
-          calls.push("stop");
-          return { exitCode: 0, output: "MICA stopped\n" };
-        },
-        startRuntime: async () => {
-          calls.push("start");
-          return { keepAlive: keepAlivePromise };
-        },
-        stdout: { write(chunk: string) { stdoutChunks.push(chunk); } },
-      });
-
-      expect(exitCode).toBe(0);
-      expect(calls).toEqual(["stop", "start"]);
-      expect(keepAliveResolved).toBe(true);
     });
   });
 

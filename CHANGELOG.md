@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3 - 2026-06-06
+
+- Deprecate `mica start`, `mica stop`, and `mica restart` commands.
+- `mica start` and bare `mica` (no args) are now aliases for `mica mcp`.
+- `mica mcp` starts an MCP stdio server, proxying to an existing bridge or starting a new one.
+
 ## 1.0.2 - 2026-06-06
 
 - Add `mica mcp` command: starts an MCP stdio server that proxies to an existing bridge or starts a new one.

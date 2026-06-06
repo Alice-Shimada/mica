@@ -77,7 +77,7 @@ mica install
 然后完全退出并重启 Wolfram Desktop。打开一个 Notebook，启动 MCP server，并连接你的 MCP client：
 
 ```bash
-mica start
+mica mcp
 ```
 
 或者从发布版 checkout 开始：
@@ -93,18 +93,16 @@ node dist/src/cli/index.js install
 然后完全退出并重启 Wolfram Desktop。打开一个 Notebook，启动 MCP server，并连接你的 MCP client：
 
 ```bash
-node dist/src/cli/index.js start
+node dist/src/cli/index.js mcp
 ```
 
 如果 MICA 已经安装在你的 `PATH` 中，也可以使用等价的发布版命令：
 
 ```bash
 mica install
-mica start
+mica mcp
 mica doctor
 mica status
-mica stop
-mica restart
 ```
 
 Dashboard：
@@ -124,7 +122,7 @@ node dist/src/cli/index.js install --dry-run
 node dist/src/cli/index.js uninstall
 ```
 
-`mica status` 会打印当前 session file、server URL、version、PID、live agent/notebook 数量，以及带 token 的 dashboard URL。如果 server 已经在运行，`mica start` 会打印同样的 status，而不是因为端口占用直接失败；因此你随时可以用它找回 dashboard token。
+`mica status` 会打印当前 session file、server URL、version、PID、live agent/notebook 数量，以及带 token 的 dashboard URL。如果 server 已经在运行，`mica mcp` 会代理到已有后端，而不是因为端口占用直接失败；因此你随时可以用它找回 dashboard token。
 
 兼容用的 legacy 安装入口仍然可用：`node scripts/install.js --dry-run`。
 
@@ -302,9 +300,9 @@ Doctor 会检查 Node 版本、package build、session file、auth token、serve
 
 | Doctor output | 可能原因 | 操作 |
 | --- | --- | --- |
-| `FAIL Session file` | Server 尚未启动 | `mica start` |
+| `FAIL Session file` | Server 尚未启动 | `mica mcp` |
 | `FAIL Auth token` | Token 不匹配或已过期 | 重启 server |
-| `FAIL Server /status reachable` | Server 未运行 | `mica start` |
+| `FAIL Server /status reachable` | Server 未运行 | `mica mcp` |
 | `FAIL Live agent count: 0` | Wolfram 未运行或 bridge 未加载 | 安装后重启 Wolfram Desktop |
 | `FAIL Live notebook count: 0` | 没有打开或注册的 Notebook | 在 Wolfram Desktop 中打开 Notebook |
 | `FAIL Kernel/init.m` | 尚未运行安装器 | `mica install` |

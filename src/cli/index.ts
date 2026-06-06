@@ -11,7 +11,7 @@ import { defaultSessionFile } from "../runtime/config.js";
 import { runConfigCommand } from "./configSnippets.js";
 import { runDoctor } from "./doctor.js";
 import { runStatusCommand, type CliStatusResult } from "./status.js";
-import { runStopCommand } from "./stop.js";
+
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,10 +101,7 @@ export function helpText(): string {
   return `Usage: mica <command> [options]
 
 Commands:
-  start                   Start the MICA bridge runtime (default)
-  stop                    Stop the running MICA bridge runtime
-  restart                 Stop then start the MICA bridge runtime
-  mcp                     Start MCP stdio server; proxy to an existing bridge if possible
+  mcp                     Run MCP stdio server (proxy to existing bridge or launch new)
   install [options]       Install MICA bridge into Wolfram
   uninstall [options]     Uninstall MICA bridge from Wolfram
   doctor                  Diagnose MICA bridge configuration
@@ -128,7 +125,6 @@ export async function runCli(
     runDoctor?: () => Promise<{ exitCode: number; output: string }>;
     runStatus?: () => Promise<CliStatusResult>;
     runConfig?: (argv: string[]) => { exitCode: number; output: string };
-    runStop?: () => Promise<{ exitCode: number; output: string }>;
     readLiveSession?: () => Promise<ProxyMcpSession | undefined>;
     startProxyRuntime?: (session: ProxyMcpSession) => Promise<{ keepAlive: Promise<void> }>;
     sleep?: (ms: number) => Promise<void>;
@@ -143,7 +139,6 @@ export async function runCli(
   const _runDoctor = deps?.runDoctor;
   const _runStatus = deps?.runStatus;
   const _runConfig = deps?.runConfig;
-  const _runStop = deps?.runStop;
   const _readLiveSession = deps?.readLiveSession ?? (() => readLiveSession(argv.slice(1)));
   const _startProxyRuntime = deps?.startProxyRuntime ?? ((session: ProxyMcpSession) => startProxyMcpRuntime(session));
   const _sleep = deps?.sleep ?? sleep;
@@ -178,26 +173,8 @@ export async function runCli(
     return 0;
   }
 
-  // start or no args
-  if (command === "start" || command === undefined) {
-    if (_runStatus) {
-      const status = await _runStatus();
-      if (status.running) {
-        stdout.write(status.output);
-        return status.exitCode;
-      }
-    }
-    if (!startRuntime) {
-      stderr.write("Error: startRuntime not available\n");
-      return 1;
-    }
-    const runtime = await startRuntime();
-    await runtime.keepAlive;
-    return 0;
-  }
-
-  // mcp
-  if (command === "mcp") {
+  // mcp (also start, or no args)
+  if (command === "mcp" || command === "start" || command === undefined) {
     const existingSession = await _readLiveSession();
     if (existingSession) {
       const proxyRuntime = await _startProxyRuntime(existingSession);
@@ -266,34 +243,6 @@ export async function runCli(
     return exitCode;
   }
 
-  // stop
-  if (command === "stop") {
-    if (!_runStop) {
-      stderr.write("Error: runStop not available\n");
-      return 1;
-    }
-    const { exitCode, output } = await _runStop();
-    stdout.write(output);
-    return exitCode;
-  }
-
-  // restart
-  if (command === "restart") {
-    if (!_runStop) {
-      stderr.write("Error: runStop not available\n");
-      return 1;
-    }
-    if (!startRuntime) {
-      stderr.write("Error: startRuntime not available\n");
-      return 1;
-    }
-    const stopResult = await _runStop();
-    if (stopResult.output) stdout.write(stopResult.output);
-    const runtime = await startRuntime();
-    await runtime.keepAlive;
-    return 0;
-  }
-
   // Unknown command
   stderr.write(`Unknown command: ${command}\n`);
   return 1;
@@ -321,7 +270,6 @@ async function main(): Promise<void> {
     runInstaller,
     runStatus: async () => runStatusCommand(),
     runConfig: runConfigCommand,
-    runStop: async () => runStopCommand(),
     runDoctor: async () =>
       runDoctor({
         projectRoot,

@@ -77,7 +77,7 @@ mica install
 Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
 
 ```bash
-mica start
+mica mcp
 ```
 
 Or from a release checkout:
@@ -93,18 +93,16 @@ node dist/src/cli/index.js install
 Then fully quit and restart Wolfram Desktop. Open a notebook, start the MCP server, and connect your MCP client:
 
 ```bash
-node dist/src/cli/index.js start
+node dist/src/cli/index.js mcp
 ```
 
 If MICA is installed on your `PATH`, the same release commands are:
 
 ```bash
 mica install
-mica start
+mica mcp
 mica doctor
 mica status
-mica stop
-mica restart
 ```
 
 Dashboard:
@@ -124,7 +122,7 @@ node dist/src/cli/index.js install --dry-run
 node dist/src/cli/index.js uninstall
 ```
 
-`mica status` prints the current session file, server URL, version, PID, live agent/notebook counts, and the token-bearing dashboard URL. If a server is already running, `mica start` prints that same status instead of failing with a port-in-use error, so you can recover the dashboard token at any time.
+`mica status` prints the current session file, server URL, version, PID, live agent/notebook counts, and the token-bearing dashboard URL. If a server is already running, `mica mcp` proxies to it instead of failing with a port-in-use error, so you can recover the dashboard token at any time.
 
 The legacy installer entry remains available for compatibility: `node scripts/install.js --dry-run`.
 
@@ -302,9 +300,9 @@ The doctor checks Node version, package build, session file, auth token, server 
 
 | Doctor output | Likely cause | Action |
 | --- | --- | --- |
-| `FAIL Session file` | Server never started | `mica start` |
+| `FAIL Session file` | Server never started | `mica mcp` |
 | `FAIL Auth token` | Token mismatch or expired | Restart the server |
-| `FAIL Server /status reachable` | Server not running | `mica start` |
+| `FAIL Server /status reachable` | Server not running | `mica mcp` |
 | `FAIL Live agent count: 0` | Wolfram not running or bridge not loaded | Restart Wolfram Desktop after install |
 | `FAIL Live notebook count: 0` | No notebook open or registered | Open a notebook in Wolfram Desktop |
 | `FAIL Kernel/init.m` | Installer not run | `mica install` |
