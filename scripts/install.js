@@ -22,7 +22,7 @@ export const STANDARD_INIT_HEADER =
 
 const REQUIRED_BRIDGE_FILES = [
   "package.json",
-  path.join("src", "bun", "index.ts"),
+  path.join("dist", "src", "bun", "index.js"),
   path.join("paclet", "Kernel", "MMAAgentBridge.wl"),
   path.join("paclet", "PacletInfo.wl"),
 ];

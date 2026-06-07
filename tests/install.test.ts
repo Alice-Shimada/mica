@@ -23,7 +23,7 @@ function makeTempDir(name: string): string {
 
 function makeBridgeFixture(): string {
   const bridgeRoot = makeTempDir("bridge-root");
-  mkdirSync(path.join(bridgeRoot, "src", "bun"), { recursive: true });
+  mkdirSync(path.join(bridgeRoot, "dist", "src", "bun"), { recursive: true });
   mkdirSync(path.join(bridgeRoot, "paclet", "Kernel"), { recursive: true });
   writeFileSync(
     path.join(bridgeRoot, "package.json"),
@@ -31,7 +31,7 @@ function makeBridgeFixture(): string {
     "utf8"
   );
   writeFileSync(
-    path.join(bridgeRoot, "src", "bun", "index.ts"),
+    path.join(bridgeRoot, "dist", "src", "bun", "index.js"),
     "export {};\n",
     "utf8"
   );
