@@ -1,9 +1,11 @@
 # Changelog
 
-## 1.0.4 - 2026-06-06
+## 1.0.4 - 2026-06-07
 
 - Remove legacy dead code from npm package (bridge, legacy tools, stop command, runtimeOptions, types).
 - Tighten `files` field to only include active runtime directories.
+- Fix `mica install` failing after npm install: `validateBridgeRoot` now checks `dist/src/bun/index.js` instead of removed `src/bun/index.ts`.
+- Increase Wolfram HTTP timeout from 10s to 30s to prevent large notebook loading timeouts.
 
 ## 1.0.3 - 2026-06-06
 
