@@ -1,6 +1,6 @@
 {
   "name": "@aliceshimada/mica",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Local MCP bridge for controlling live Wolfram Desktop / Mathematica notebooks.",
   "type": "module",
   "repository": {

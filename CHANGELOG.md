@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.5 - 2026-06-09
+
+- Fix abort disconnection: give control evaluator a separate kernel via `LinkLaunch` instead of cloning `"Local"`.
+
 ## 1.0.4 - 2026-06-07
 
 - Remove legacy dead code from npm package (bridge, legacy tools, stop command, runtimeOptions, types).

@@ -37,7 +37,7 @@ export const MICA_AGENT_INSTRUCTIONS = [
   ...TOOL_GUIDE.map(([name, description]) => `- ${name}: ${description}`),
 ].join("\n");
 
-export function createMicaMcpServer(name: string, version = "1.0.4"): McpServer {
+export function createMicaMcpServer(name: string, version = "1.0.5"): McpServer {
   return new McpServer({ name, version }, { instructions: MICA_AGENT_INSTRUCTIONS });
 }
 
