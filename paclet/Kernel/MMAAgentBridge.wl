@@ -1651,15 +1651,18 @@ StopMMAAgentControlKernel[] := Module[{nb = $ControlAgentNotebook},
   <|"status" -> "closed"|>
 ];
 
-EnsureControlEvaluator[evaluatorName_String] := Module[{before, beforeAssoc, localSpec, controlSpec, afterAssoc},
+EnsureControlEvaluator[evaluatorName_String] := Module[{before, beforeAssoc, controlSpec, afterAssoc, kernelCommand},
   before = Quiet @ Check[CurrentValue[$FrontEnd, EvaluatorNames], $Failed];
   If[before === $Failed, Return[BridgeFailure["EVALUATOR_CONFIG_FAILED", "Could not read FrontEnd evaluator configuration."]]];
   beforeAssoc = Association[before];
   If[KeyExistsQ[beforeAssoc, evaluatorName],
     Return[<|"status" -> "exists", "evaluatorName" -> evaluatorName, "spec" -> Lookup[beforeAssoc, evaluatorName]|>]
   ];
-  localSpec = Lookup[beforeAssoc, "Local", {"AutoStartOnLaunch" -> False}];
-  controlSpec = Append[DeleteCases[localSpec, HoldPattern["AutoStartOnLaunch" -> _]], "AutoStartOnLaunch" -> False];
+  kernelCommand = First[$CommandLine] <> " -wstp -noicon";
+  controlSpec = {
+    "AutoStartOnLaunch" -> False,
+    "Kernel" -> LinkLaunch[kernelCommand]
+  };
   Quiet @ Check[
     CurrentValue[$FrontEnd, {EvaluatorNames, evaluatorName}] = controlSpec,
     Return[BridgeFailure["EVALUATOR_CONFIG_FAILED", "Failed to configure the control evaluator."]]
