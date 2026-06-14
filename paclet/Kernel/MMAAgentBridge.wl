@@ -1409,6 +1409,43 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
   ]
 ];
 
+KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
+  If[Not @ ConfirmAction["RunCell", "AI requests quitting the notebook kernel. Allow?"], Return[$Canceled]];
+  notebookId = TargetNotebookId[args];
+  If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  record = NotebookRecord[notebookId];
+  If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  notebook = Lookup[record, "notebook", None];
+  If[Head[notebook] =!= NotebookObject, Return[Failure["BAD_REQUEST", <|"message" -> "Notebook is unavailable."|>]]];
+  evaluatorName = Quiet @ Check[CurrentValue[notebook, Evaluator], $ControlAgentEvaluatorName];
+  If[evaluatorName === $ControlAgentEvaluatorName,
+    Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill the MICA control agent evaluator."|>]]
+  ];
+  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluatorQuit"], Null];
+  <|"status" -> "killed", "notebookId" -> notebookId|>
+];
+
+RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, tempCell, evaluatorName},
+  If[Not @ ConfirmAction["RunCell", "AI requests restarting the notebook kernel. Allow?"], Return[$Canceled]];
+  notebookId = TargetNotebookId[args];
+  If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  record = NotebookRecord[notebookId];
+  If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  notebook = Lookup[record, "notebook", None];
+  If[Head[notebook] =!= NotebookObject, Return[Failure["BAD_REQUEST", <|"message" -> "Notebook is unavailable."|>]]];
+  evaluatorName = Quiet @ Check[CurrentValue[notebook, Evaluator], $ControlAgentEvaluatorName];
+  If[evaluatorName === $ControlAgentEvaluatorName,
+    Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
+  ];
+  SelectionMove[notebook, After, Notebook];
+  tempCell = NotebookWrite[notebook, Cell[BoxData["Null"], "Input"]];
+  SelectionMove[tempCell, All, CellContents];
+  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], Null];
+  Pause[0.5];
+  Quiet @ Check[NotebookDelete[tempCell], Null];
+  <|"status" -> "restarted", "notebookId" -> notebookId|>
+];
+
 SaveNotebookRequest[args_Association] := Module[{notebookId, record, notebook},
   If[Not @ ConfirmAction["SaveNotebook", "AI requests saving the notebook. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
@@ -1778,6 +1815,8 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
           "mma_delete_cell", DeleteCellRequest[args],
           "mma_run_cell", RunCellRequest[args],
           "mma_abort_evaluation", AbortEvaluationRequest[args],
+          "mma_kill_kernel", KillKernelRequest[args],
+          "mma_restart_kernel", RestartKernelRequest[args],
           "mma_get_cell_output", GetCellOutputById[args],
           "mma_read_artifact", ReadArtifactById[args],
           "mma_save_notebook", SaveNotebookRequest[args],

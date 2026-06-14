@@ -145,6 +145,12 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source).toContain("AbortEvaluationRequest[args_Association]");
     expect(source).toContain('FrontEndTokenExecute[notebook, "EvaluatorAbort"]');
     expect(source).toContain('"mma_abort_evaluation", AbortEvaluationRequest[args]');
+    expect(source).toContain('"mma_kill_kernel", KillKernelRequest[args]');
+    expect(source).toContain('"mma_restart_kernel", RestartKernelRequest[args]');
+    expect(source).toContain('KillKernelRequest[args_Association]');
+    expect(source).toContain('RestartKernelRequest[args_Association]');
+    expect(source).toContain('FrontEndTokenExecute[notebook, "EvaluatorQuit"]');
+    expect(source).toContain('"PROTECTED_EVALUATOR"');
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody).toContain('FinishRunningCell["finished"]');
     expect(abortBody).toContain('<|"status" -> "finished", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');

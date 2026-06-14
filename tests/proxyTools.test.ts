@@ -47,6 +47,8 @@ describe("proxy MCP tools", () => {
       "mma_delete_cell",
       "mma_run_cell",
       "mma_abort_evaluation",
+      "mma_kill_kernel",
+      "mma_restart_kernel",
       "mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",

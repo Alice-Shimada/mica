@@ -198,7 +198,9 @@ describe("backend MCP tool registration", () => {
       "mma_modify_cell",
       "mma_delete_cell",
       "mma_run_cell",
-      "mma_abort_evaluation",
+"mma_abort_evaluation",
+      "mma_kill_kernel",
+      "mma_restart_kernel",
       "mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",
@@ -666,6 +668,8 @@ describe("backend MCP tool registration", () => {
       { tool: "mma_delete_cell", args: { cellId: "cell-1" }, permission: "DeleteCell" as const },
       { tool: "mma_run_cell", args: { cellId: "cell-1" }, permission: "RunCell" as const },
       { tool: "mma_abort_evaluation", args: {}, permission: "RunCell" as const },
+      { tool: "mma_kill_kernel", args: {}, permission: "RunCell" as const },
+      { tool: "mma_restart_kernel", args: {}, permission: "RunCell" as const },
       { tool: "mma_save_notebook", args: {}, permission: "SaveNotebook" as const },
     ];
 
@@ -779,6 +783,8 @@ describe("backend MCP tool registration", () => {
       "mma_delete_cell",
       "mma_run_cell",
       "mma_abort_evaluation",
+      "mma_kill_kernel",
+      "mma_restart_kernel",
       "mma_save_notebook",
     ] as const;
 

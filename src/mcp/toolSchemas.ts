@@ -48,6 +48,14 @@ export const abortEvaluationSchema = z.object({
   ...notebookSelectorFields
 }).strict();
 
+export const killKernelSchema = z.object({
+  ...notebookSelectorFields
+}).strict();
+
+export const restartKernelSchema = z.object({
+  ...notebookSelectorFields
+}).strict();
+
 export const getCellOutputSchema = z.object({
   ...notebookSelectorFields,
   cellId: z.string().min(1),
