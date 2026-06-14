@@ -1410,7 +1410,6 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
 ];
 
 KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
-  If[Not @ ConfirmAction["RunCell", "AI requests quitting the notebook kernel. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1426,7 +1425,6 @@ KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, eva
 ];
 
 RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, tempCell, evaluatorName},
-  If[Not @ ConfirmAction["RunCell", "AI requests restarting the notebook kernel. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
