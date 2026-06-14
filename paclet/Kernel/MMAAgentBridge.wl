@@ -1441,7 +1441,7 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
   ];
   SelectionMove[notebook, After, Notebook];
-  tempCell = NotebookWrite[notebook, Cell[BoxData["Null"], "Input"]];
+  tempCell = NotebookWrite[notebook, Cell[BoxData[""], "Input"]];
   SelectionMove[tempCell, All, CellContents];
   Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], Null];
   Pause[0.5];
