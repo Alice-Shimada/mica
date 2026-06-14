@@ -27,8 +27,8 @@ describe("package.json metadata", () => {
     expect(pkg.name).toBe("@aliceshimada/mica");
   });
 
-  it("has version 1.0.5", () => {
-    expect(pkg.version).toBe("1.0.5");
+  it("has version 1.1.0", () => {
+    expect(pkg.version).toBe("1.1.0");
   });
 
   it("has repository pointing to Alice-Shimada/mica", () => {

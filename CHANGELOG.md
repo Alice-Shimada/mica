@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0 - 2026-06-09
+
+- Add `mma_kill_kernel` tool: quit a notebook's Wolfram kernel (control agent kernel is protected).
+- Add `mma_restart_kernel` tool: restart a notebook's Wolfram kernel so it can evaluate cells again.
+
 ## 1.0.5 - 2026-06-09
 
 - Fix abort disconnection: give control evaluator a separate kernel via `LinkLaunch` instead of cloning `"Local"`.

@@ -11,7 +11,7 @@ import { writeSessionFile } from "../runtime/session.js";
 import { createBunHttpApp } from "./httpServer.js";
 
 const MCP_SERVER_NAME = "mica-bun";
-const MICA_PACKAGE_VERSION = "1.0.5";
+const MICA_PACKAGE_VERSION = "1.1.0";
 
 export type BunRuntimeDeps = {
   bridgeOnly?: boolean;
