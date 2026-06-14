@@ -1409,7 +1409,7 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
   ]
 ];
 
-KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, tempCell},
+KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1420,16 +1420,11 @@ KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, eva
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill the MICA control agent evaluator."|>]]
   ];
-  SelectionMove[notebook, After, Notebook];
-  tempCell = NotebookWrite[notebook, Cell[BoxData["Quit[]"], "Input"]];
-  SelectionMove[tempCell, All, CellContents];
-  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], Null];
-  Pause[0.5];
-  Quiet @ Check[NotebookDelete[tempCell], Null];
+  Quiet @ Check[NotebookEvaluate[notebook, "Quit[]", InsertResults -> False], Null];
   <|"status" -> "killed", "notebookId" -> notebookId|>
 ];
 
-RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, tempCell, evaluatorName},
+RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1440,12 +1435,7 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
   ];
-  SelectionMove[notebook, After, Notebook];
-  tempCell = NotebookWrite[notebook, Cell[BoxData[""], "Input"]];
-  SelectionMove[tempCell, All, CellContents];
-  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], Null];
-  Pause[0.5];
-  Quiet @ Check[NotebookDelete[tempCell], Null];
+  Quiet @ Check[NotebookEvaluate[notebook, "Null", InsertResults -> False], Null];
   <|"status" -> "restarted", "notebookId" -> notebookId|>
 ];
 
