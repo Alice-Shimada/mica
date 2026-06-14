@@ -294,7 +294,7 @@ describe("Phase 11.2 mica doctor", () => {
 
       expect(exitCode).toBe(1);
       expect(output).toContain("FAIL Session file");
-      expect(output).toContain("FIX  Run: mica start");
+      expect(output).toContain("FIX  Run: mica mcp");
       expect(fetchCalled).toBe(false);
     });
   });

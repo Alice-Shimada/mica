@@ -127,7 +127,7 @@ export async function runDoctor(
 
   if (!_exists(sessionFile)) {
     fail("Session file", `${sessionFile} (not found)`);
-    fix("Run: mica start");
+    fix("Run: mica mcp");
   } else {
     try {
       const raw = _readFile(sessionFile);
@@ -142,7 +142,7 @@ export async function runDoctor(
         "Session file",
         `${sessionFile} (${e instanceof Error ? e.message : String(e)})`
       );
-      fix("Run: mica start");
+      fix("Run: mica mcp");
     }
   }
 
@@ -224,7 +224,7 @@ export async function runDoctor(
         "Server /status reachable",
         e instanceof Error ? e.message : String(e)
       );
-      fix("Run: mica start");
+      fix("Run: mica mcp");
       fail("Live agent count", "server not reachable");
       fail("Live notebook count", "server not reachable");
     }
