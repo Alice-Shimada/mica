@@ -1409,7 +1409,7 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
   ]
 ];
 
-KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
+KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, tempCell},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1420,7 +1420,12 @@ KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, eva
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill the MICA control agent evaluator."|>]]
   ];
-  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluatorQuit"], Null];
+  SelectionMove[notebook, After, Notebook];
+  tempCell = NotebookWrite[notebook, Cell[BoxData["Quit[]"], "Input"]];
+  SelectionMove[tempCell, All, CellContents];
+  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], Null];
+  Pause[0.5];
+  Quiet @ Check[NotebookDelete[tempCell], Null];
   <|"status" -> "killed", "notebookId" -> notebookId|>
 ];
 
