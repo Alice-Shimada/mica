@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import path from "node:path";
@@ -279,10 +279,14 @@ async function main(): Promise<void> {
   process.exitCode = exitCode;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
-    process.stderr.write(`${message}\n`);
-    process.exitCode = 1;
-  });
+if (process.argv[1]) {
+  const scriptReal = realpathSync(fileURLToPath(import.meta.url));
+  const argReal = realpathSync(process.argv[1]);
+  if (scriptReal === argReal) {
+    main().catch((error) => {
+      const message = error instanceof Error ? error.stack ?? error.message : String(error);
+      process.stderr.write(`${message}\n`);
+      process.exitCode = 1;
+    });
+  }
 }
