@@ -1461,6 +1461,8 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
   ];
+  Quiet @ Check[NotebookEvaluate[notebook, "Quit[]", InsertResults -> False], Null];
+  Pause[0.5];
   Quiet @ Check[NotebookEvaluate[notebook, "Null", InsertResults -> False], Null];
   <|"status" -> "restarted", "notebookId" -> notebookId|>
 ];
@@ -1574,7 +1576,8 @@ AgentHeartbeatNotebookClosure[notebookId_String] := Module[{record = Lookup[$Bri
   response = Quiet @ Check[BridgePost["/notebooks/" <> URLComponentEncodeString[notebookId] <> "/closed", <|"agentSessionId" -> $AgentSessionId|>], $Failed];
   If[AssociationQ[record] && AssociationQ[response] && TrueQ[Lookup[response, "ok", False]],
     If[!TrueQ[Lookup[record, "closed", False]],
-      $BridgeNotebooks[notebookId] = Join[record, <|"closed" -> True|>]
+      $BridgeNotebooks[notebookId] = Join[record, <|"closed" -> True|>];
+      KeyDropFrom[$BridgeNotebookPermissions, notebookId]
     ]
   ];
   response

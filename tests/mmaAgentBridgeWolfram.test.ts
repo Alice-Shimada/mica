@@ -150,7 +150,9 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('KillKernelRequest[args_Association]');
     expect(source).toContain('RestartKernelRequest[args_Association]');
     expect(source).toContain('NotebookEvaluate[notebook, "Quit[]", InsertResults -> False]');
+    expect(source).toContain('NotebookEvaluate[notebook, "Null", InsertResults -> False]');
     expect(source).toContain('"PROTECTED_EVALUATOR"');
+    expect(source).toContain('KeyDropFrom[$BridgeNotebookPermissions, notebookId]');
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody).toContain('FinishRunningCell["finished"]');
     expect(abortBody).toContain('<|"status" -> "finished", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');

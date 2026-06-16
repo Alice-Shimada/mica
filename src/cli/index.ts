@@ -280,13 +280,17 @@ async function main(): Promise<void> {
 }
 
 if (process.argv[1]) {
-  const scriptReal = realpathSync(fileURLToPath(import.meta.url));
-  const argReal = realpathSync(process.argv[1]);
-  if (scriptReal === argReal) {
-    main().catch((error) => {
-      const message = error instanceof Error ? error.stack ?? error.message : String(error);
-      process.stderr.write(`${message}\n`);
-      process.exitCode = 1;
-    });
+  try {
+    const scriptReal = realpathSync(fileURLToPath(import.meta.url));
+    const argReal = realpathSync(process.argv[1]);
+    if (scriptReal === argReal) {
+      main().catch((error) => {
+        const message = error instanceof Error ? error.stack ?? error.message : String(error);
+        process.stderr.write(`${message}\n`);
+        process.exitCode = 1;
+      });
+    }
+  } catch {
+    // process.argv[1] may not resolve (e.g. node -e, shebang edge cases)
   }
 }
