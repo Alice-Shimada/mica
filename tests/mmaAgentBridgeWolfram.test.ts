@@ -108,7 +108,7 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source).toContain('$RunningNotebookObject = notebook;');
     expect(source).toContain('$LastRunStatusNotebookId = None;');
     expect(source).toContain('Head[$RunningNotebookObject] === NotebookObject');
-    expect(source).toContain('FrontEndTokenExecute[$RunningNotebookObject, "EvaluatorAbort"]');
+expect(source).toContain('EvaluatorAbort');
     expect(source).toContain('If[$AttachedNotebook =!= None, Quiet @ Check[FrontEndTokenExecute[$AttachedNotebook, "EvaluatorAbort"], Null]]');
     expect(source).toContain('$RunningNotebookId = None;');
     expect(source).toContain('$RunningNotebookObject = None;');
@@ -133,9 +133,9 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(runBody).toContain("$LastLateResult = None");
   });
 
-  it("supports abort evaluation requests without claiming confirmed abort", () => {
+it("supports abort evaluation requests without claiming confirmed abort", () => {
     const abortStart = source.indexOf("AbortEvaluationRequest[args_Association]");
-    const abortEnd = source.indexOf("SaveNotebookRequest[args_Association]", abortStart);
+    const abortEnd = source.indexOf("KillKernelRequest[args_Association]", abortStart);
     const abortBody = source.slice(abortStart, abortEnd);
     const abortRequestedIndex = abortBody.indexOf("$AbortRequestedAt = AbsoluteTime[]");
     const abortStatusIndex = abortBody.indexOf('$RunningStatus = "abort_requested"');
@@ -143,13 +143,13 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
 
     expect(abortStart).toBeGreaterThanOrEqual(0);
     expect(source).toContain("AbortEvaluationRequest[args_Association]");
-    expect(source).toContain('FrontEndTokenExecute[notebook, "EvaluatorAbort"]');
+    expect(source).toContain('FrontEndTokenExecute[$RunningNotebookObject, "EvaluatorAbort"]');
     expect(source).toContain('"mma_abort_evaluation", AbortEvaluationRequest[args]');
     expect(source).toContain('"mma_kill_kernel", KillKernelRequest[args]');
     expect(source).toContain('"mma_restart_kernel", RestartKernelRequest[args]');
     expect(source).toContain('KillKernelRequest[args_Association]');
     expect(source).toContain('RestartKernelRequest[args_Association]');
-    expect(source).toContain('FrontEndTokenExecute[notebook, "EvaluatorQuit"]');
+    expect(source).toContain('NotebookEvaluate[notebook, "Quit[]", InsertResults -> False]');
     expect(source).toContain('"PROTECTED_EVALUATOR"');
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody).toContain('FinishRunningCell["finished"]');
@@ -498,7 +498,7 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
 
     expect(artifactStart).toBeGreaterThanOrEqual(0);
     expect(readArtifactStart).toBeGreaterThan(artifactStart);
-    expect(readArtifactBody).toContain("RequireReadPermission[]");
+    expect(readArtifactBody).toContain("RequireReadPermission[notebookId]");
     expect(readArtifactBody).toContain("TargetNotebookId[args]");
     expect(readArtifactBody).toContain("CellArtifactScan[cell, cellId, Lookup[record, \"notebook\", None]]");
     expect(readArtifactBody).toContain("Utf8SliceStringToBytes[text, offset, limit]");
@@ -625,14 +625,14 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
       'Saveable -> False',
       'PaletteView[] :=',
       'PaletteStatusSummary[] := Module[{server, paletteConnected, notebookAttached, pendingRequests, attachedNotebook, error}',
-      'PalettePermissionRow["Read notebook", "ReadNotebook"]',
-      'PalettePermissionRow["Insert cell", "InsertCell"]',
-      'PalettePermissionRow["Modify cell", "ModifyCell"]',
-      'PalettePermissionRow["Delete cell", "DeleteCell"]',
-      'PalettePermissionRow["Run cell", "RunCell"]',
-      'PalettePermissionRow["Save notebook", "SaveNotebook"]',
-      'Dynamic[$BridgePermissions[key],',
-      '$BridgePermissions[key] = #;',
+      'PalettePermissionRow["Read notebook", "ReadNotebook", $ActiveNotebookId]',
+      'PalettePermissionRow["Insert cell", "InsertCell", $ActiveNotebookId]',
+      'PalettePermissionRow["Modify cell", "ModifyCell", $ActiveNotebookId]',
+      'PalettePermissionRow["Delete cell", "DeleteCell", $ActiveNotebookId]',
+      'PalettePermissionRow["Run cell", "RunCell", $ActiveNotebookId]',
+      'PalettePermissionRow["Save notebook", "SaveNotebook", $ActiveNotebookId]',
+      'Dynamic[perms[key],',
+      'SetNotebookPermissions[notebookId,',
       'PostPermissions[] := Module[',
       'BridgePost["/permissions"',
       'Style["MMA Agent Bridge", 16, Bold]',
@@ -673,9 +673,9 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
   });
 
   it("attaches and posts permissions with notebook updates", () => {
-    expect(source).toContain('"permissions" -> $BridgePermissions');
+    expect(source).toContain('"permissions" -> perms');
     expect(source).toContain('Quiet @ Check[PostPermissions[], Null]');
-    expect(source).toContain('$BridgePermissions[key] = #;');
+    expect(source).toContain('NotebookPermissions[notebookId]');
   });
 
   it("includes a textual paclet palette launcher notebook", () => {
@@ -976,11 +976,13 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(clearAgentRunningIndex).toBeGreaterThan(noneIndexInStop);
   });
 
-  it("preserves existing $BridgePermissions across package reloads", () => {
+  it("preserves existing $BridgePermissions and $BridgeNotebookPermissions across package reloads", () => {
     expect(source).toContain('$DefaultBridgePermissions = <|');
     expect(source).toContain('If[!AssociationQ[Quiet @ Check[$BridgePermissions, None]],');
     expect(source).toContain('$BridgePermissions = $DefaultBridgePermissions');
     expect(source).not.toContain('$BridgePermissions = <|\n  "ReadNotebook" -> True,');
+    expect(source).toContain('If[!AssociationQ[Quiet @ Check[$BridgeNotebookPermissions, None]],');
+    expect(source).toContain('$BridgeNotebookPermissions = <||>');
   });
 
   it("defines the status dashboard palette helpers and controls", () => {
@@ -1014,7 +1016,7 @@ describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
     expect(source).toContain('Button["Refresh Notebooks"');
     expect(source).toContain('Button["Use Selected Notebook"');
     expect(source).toContain('Button["Cancel Running Request"');
-    expect(source).toContain('Checkbox[Dynamic[$BridgePermissions[key]');
+    expect(source).toContain('Checkbox[Dynamic[perms[key]');
   });
 
   it("keeps diagnostics opener state stable across status refreshes", () => {

@@ -122,11 +122,31 @@ If[!AssociationQ[Quiet @ Check[$BridgePermissions, None]],
   $BridgePermissions = $DefaultBridgePermissions
 ];
 
-PalettePermissionRow[label_String, key_String] := Row[{
-  Checkbox[Dynamic[$BridgePermissions[key], ($BridgePermissions[key] = #; Quiet @ Check[PostPermissions[], Null]) &]],
-  Spacer[8],
-  Style[label, 11]
-}];
+If[!AssociationQ[Quiet @ Check[$BridgeNotebookPermissions, None]],
+  $BridgeNotebookPermissions = <||>
+];
+
+NotebookPermissions[notebookId_String] := Lookup[$BridgeNotebookPermissions, notebookId, $DefaultBridgePermissions];
+
+SetNotebookPermissions[notebookId_String, perms_Association] := (
+  $BridgeNotebookPermissions[notebookId] = perms
+);
+
+PalettePermissionRow[label_String, key_String, notebookId_:None] := Module[{perms, setter},
+  perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
+    NotebookPermissions[notebookId],
+    $BridgePermissions
+  ];
+  setter = If[StringQ[notebookId] && StringLength[notebookId] > 0,
+    Function[val, SetNotebookPermissions[notebookId, Join[perms, <|key -> val|>]]],
+    Function[val, $BridgePermissions[key] = val; Quiet @ Check[PostPermissions[], Null]]
+  ];
+  Row[{
+    Checkbox[Dynamic[perms[key], (setter[#]) &]],
+    Spacer[8],
+    Style[label, 11]
+  }]
+];
 
 PaletteStatusSummary[] := Module[{server, paletteConnected, notebookAttached, pendingRequests, attachedNotebook, error},
   server = Lookup[$LastStatus, "server", "unknown"];
@@ -332,14 +352,14 @@ PermissionsPanel[] := Panel[
   Column[
     {
       Style["Permissions", Bold],
-      Grid[
+      Dynamic @ Grid[
         {
-          {PalettePermissionRow["Read notebook", "ReadNotebook"]},
-          {PalettePermissionRow["Insert cell", "InsertCell"]},
-          {PalettePermissionRow["Modify cell", "ModifyCell"]},
-          {PalettePermissionRow["Delete cell", "DeleteCell"]},
-          {PalettePermissionRow["Run cell", "RunCell"]},
-          {PalettePermissionRow["Save notebook", "SaveNotebook"]}
+          {PalettePermissionRow["Read notebook", "ReadNotebook", $ActiveNotebookId]},
+          {PalettePermissionRow["Insert cell", "InsertCell", $ActiveNotebookId]},
+          {PalettePermissionRow["Modify cell", "ModifyCell", $ActiveNotebookId]},
+          {PalettePermissionRow["Delete cell", "DeleteCell", $ActiveNotebookId]},
+          {PalettePermissionRow["Run cell", "RunCell", $ActiveNotebookId]},
+          {PalettePermissionRow["Save notebook", "SaveNotebook", $ActiveNotebookId]}
         },
         Alignment -> Left,
         Spacings -> {1, 0.35}
@@ -590,10 +610,16 @@ PostPermissions[] := Module[{payload = <|"permissions" -> $BridgePermissions|>},
   Quiet @ Check[BridgePost["/permissions", payload], $Failed]
 ];
 
-NeedsConfirmationQ[action_String] := Not @ TrueQ[$BridgePermissions[action]];
+NeedsConfirmationQ[action_String, notebookId_:None] := Module[{perms},
+  perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
+    NotebookPermissions[notebookId],
+    $BridgePermissions
+  ];
+  Not @ TrueQ[perms[action]]
+];
 
-ConfirmAction[action_String, message_String] := If[
-  NeedsConfirmationQ[action],
+ConfirmAction[action_String, message_String, notebookId_:None] := If[
+  NeedsConfirmationQ[action, notebookId],
   ChoiceDialog[message, {"Allow" -> True, "Deny" -> False}],
   True
 ];
@@ -606,8 +632,8 @@ FailedRequestCode[failure_Failure] := Module[{code = failure[[1]]},
 
 FailedRequestMessage[failure_Failure] := Lookup[failure[[2]], "Message", Lookup[failure[[2]], "message", "The Wolfram bridge rejected the request."]];
 
-RequireReadPermission[] := If[
-  Not @ ConfirmAction["ReadNotebook", "AI requests reading the notebook. Allow?"],
+RequireReadPermission[notebookId_:None] := If[
+  Not @ ConfirmAction["ReadNotebook", "AI requests reading the notebook. Allow?", notebookId],
   $Canceled,
   True
 ];
@@ -628,7 +654,7 @@ NotebookInfo[nb_NotebookObject, notebookId_String] := <|
   "wolframVersion" -> ToString @ $VersionNumber,
   "platform" -> $OperatingSystem,
   "paletteId" -> $PaletteId,
-  "permissions" -> $BridgePermissions
+  "permissions" -> NotebookPermissions[notebookId]
 |>;
 
 NotebookRecord[notebookId_String] := Lookup[$BridgeNotebooks, notebookId, <||>];
@@ -1138,8 +1164,8 @@ RefreshCellMap[notebookId_String] := Module[{record, nb, cells, idByCell, previo
 ];
 
 ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell, maxBytes, payload},
-  If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[RequireReadPermission[notebookId] === $Canceled, Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1159,8 +1185,8 @@ ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell, maxB
 ];
 
 GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell, artifacts, maxBytes, payload},
-  If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[RequireReadPermission[notebookId] === $Canceled, Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1179,8 +1205,8 @@ GetCellOutputById[args_Association] := Module[{notebookId, record, cellId, cell,
 ];
 
 ReadArtifactById[args_Association] := Module[{notebookId, record, artifactId, parts, cellId, kind, indexText, index, cell, artifacts, artifactList, text, offset, limit, page, nextOffset, done},
-  If[RequireReadPermission[] === $Canceled, Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[RequireReadPermission[notebookId] === $Canceled, Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1255,8 +1281,8 @@ InsertCellAtBeginning[notebook_NotebookObject, newCell_] := Module[{beforeCount,
 ];
 
 InsertCellRequest[args_Association] := Module[{notebookId, record, afterId, style, content, newCell, notebook, anchor, cells, inserted, refreshed},
-  If[Not @ ConfirmAction["InsertCell", "AI requests inserting 1 cell. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["InsertCell", "AI requests inserting 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1291,8 +1317,8 @@ InsertCellRequest[args_Association] := Module[{notebookId, record, afterId, styl
 ];
 
 ModifyCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cellMap, cell, content, style, newCell, cells, cellIndex, updatedCells, updatedCell, writeResult},
-  If[Not @ ConfirmAction["ModifyCell", "AI requests modifying 1 cell. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["ModifyCell", "AI requests modifying 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1322,8 +1348,8 @@ ModifyCellRequest[args_Association] := Module[{notebookId, record, notebook, cel
 ];
 
 DeleteCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, cellMap, artifacts, artifactIds, newCellMap},
-  If[Not @ ConfirmAction["DeleteCell", "AI requests deleting 1 cell. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["DeleteCell", "AI requests deleting 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1345,8 +1371,8 @@ DeleteCellRequest[args_Association] := Module[{notebookId, record, notebook, cel
 ];
 
 RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, timeoutSec = Lookup[args, "timeoutSec", 120], installedEpilog, evaluateResult},
-  If[Not @ ConfirmAction["RunCell", "AI requests running 1 cell. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["RunCell", "AI requests running 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1384,8 +1410,8 @@ RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId
 ];
 
 AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook, runningCellId, runningRequestId, wasRunning},
-  If[Not @ ConfirmAction["RunCell", "AI requests aborting the running evaluation. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["RunCell", "AI requests aborting the running evaluation. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1440,8 +1466,8 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
 ];
 
 SaveNotebookRequest[args_Association] := Module[{notebookId, record, notebook},
-  If[Not @ ConfirmAction["SaveNotebook", "AI requests saving the notebook. Allow?"], Return[$Canceled]];
   notebookId = TargetNotebookId[args];
+  If[Not @ ConfirmAction["SaveNotebook", "AI requests saving the notebook. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
   If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1496,11 +1522,15 @@ AgentHeartbeat[] := BridgePost[
   |>
 ];
 
-NotebookHeartbeatPayload[nb_NotebookObject] := Module[{savedPath, windowTitle, displayName, frontendObjectKey},
+NotebookHeartbeatPayload[nb_NotebookObject, notebookId_:None] := Module[{savedPath, windowTitle, displayName, frontendObjectKey, perms},
   savedPath = Quiet @ Check[ToString[Replace[NotebookFileName[nb], $Failed -> ""]], ""];
   frontendObjectKey = FrontendObjectKey[nb];
   windowTitle = NotebookWindowTitle[nb];
   displayName = NotebookDisplayNameForHeartbeat[nb, savedPath, frontendObjectKey];
+  perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
+    NotebookPermissions[notebookId],
+    $DefaultBridgePermissions
+  ];
   <|
     "agentSessionId" -> $AgentSessionId,
     "frontendObjectKey" -> frontendObjectKey,
@@ -1510,7 +1540,7 @@ NotebookHeartbeatPayload[nb_NotebookObject] := Module[{savedPath, windowTitle, d
     "savedPath" -> savedPath,
     "wolframVersion" -> ToString[$VersionNumber],
     "platform" -> $OperatingSystem,
-    "permissions" -> $BridgePermissions,
+    "permissions" -> perms,
     "seenAt" -> UnixTimeMilliseconds[]
   |>
 ];
@@ -1568,7 +1598,7 @@ HeartbeatNotebooks[] := Module[{notebooks = AgentVisibleNotebooks[], visibleNote
             None
           ];
           If[StringQ[localNotebookId] && StringLength[localNotebookId] > 0, AppendTo[visibleNotebookIds, localNotebookId]];
-          payload = NotebookHeartbeatPayload[nb];
+          payload = NotebookHeartbeatPayload[nb, localNotebookId];
           response = Quiet @ Check[BridgePost["/notebooks/heartbeat", payload], $Failed];
           If[AssociationQ[response],
             notebookId = Lookup[Lookup[response, "notebook", <||>], "notebookId", Lookup[response, "notebookId", None]];
@@ -1801,7 +1831,7 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
         !AssociationQ[args], Failure["BAD_REQUEST", <|"Message" -> "Request arguments must be an association."|>],
         True,
         Switch[tool,
-          "mma_list_cells", If[RequireReadPermission[] === $Canceled, $Canceled, Module[{notebookId = TargetNotebookId[args], refresh}, If[!StringQ[notebookId] || StringLength[notebookId] == 0, Failure["BAD_REQUEST", <|"Message" -> "No notebook is selected."|>], refresh = RefreshCellMap[notebookId]; If[MatchQ[refresh, _Failure], refresh, <|"cells" -> refresh|>]]]],
+          "mma_list_cells", If[RequireReadPermission[TargetNotebookId[args]] === $Canceled, $Canceled, Module[{notebookId = TargetNotebookId[args], refresh}, If[!StringQ[notebookId] || StringLength[notebookId] == 0, Failure["BAD_REQUEST", <|"Message" -> "No notebook is selected."|>], refresh = RefreshCellMap[notebookId]; If[MatchQ[refresh, _Failure], refresh, <|"cells" -> refresh|>]]]],
           "mma_read_cell", ReadCellById[args],
           "mma_insert_cell", InsertCellRequest[args],
           "mma_modify_cell", ModifyCellRequest[args],
