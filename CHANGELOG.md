@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 - 2026-06-16
+
+- Fix `RestartKernelRequest`: kill kernel via `Quit[]` before restarting.
+- Fix `realpathSync` crash when `process.argv[1]` doesn't resolve.
+- Fix `$BridgeNotebookPermissions` memory leak: prune on notebook close.
+
 ## 1.1.0 - 2026-06-09
 
 - Add `mma_kill_kernel` tool: quit a notebook's Wolfram kernel (control agent kernel is protected).
