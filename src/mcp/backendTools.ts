@@ -327,13 +327,13 @@ if (tool === "mma_select_notebook") {
       const live = state.agents.list().find((a) => !a.offline && !a.retired);
       if (!live) throw new Error("NO_LIVE_AGENT");
       const notebook = state.notebooks.listLive().find((n) => n.agentSessionId === live.agentSessionId);
-      if (!notebook) throw new Error("NO_LIVE_NOTEBOOK");
+      const targetNotebookId = notebook?.notebookId ?? `__agent__${live.agentSessionId}`;
       const requestId = randomUUID();
       state.queue.enqueue({
         requestId,
         tool,
         arguments: recordArgs,
-        targetNotebookId: notebook.notebookId,
+        targetNotebookId,
         agentSessionId: live.agentSessionId,
         timeoutMs: DEFAULT_TIMEOUTS_MS.mutation,
         createdAt: Date.now(),
