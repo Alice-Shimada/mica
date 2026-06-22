@@ -1,3 +1,5 @@
+(* ::Package:: *)
+
 BeginPackage["MMAAgentBridge`"];
 
 StartMMAAgentPalette::usage = "StartMMAAgentPalette[] opens the MMA Agent Bridge palette.";
@@ -115,7 +117,9 @@ $DefaultBridgePermissions = <|
   "ModifyCell" -> False,
   "DeleteCell" -> False,
   "RunCell" -> False,
-  "SaveNotebook" -> False
+  "SaveNotebook" -> False,
+  "CreateNotebook" -> False,
+  "OpenNotebook" -> False
 |>;
 
 If[!AssociationQ[Quiet @ Check[$BridgePermissions, None]],
@@ -201,7 +205,7 @@ NotebookDisplayName[record_Association] := Module[{info, title, path, notebookId
   path = StringTrim[ToString[Lookup[info, "notebookPath", ""]]];
   If[title === "" && path === "",
     If[StringQ[notebookId] && StringLength[notebookId] > 0, notebookId, "Untitled notebook"],
-    If[path === "", title, title <> " — " <> FileNameTake[path]]
+    If[path === "", title, title <> " \[LongDash] " <> FileNameTake[path]]
   ]
 ];
 
@@ -311,7 +315,7 @@ RuntimeStatusCard[] := Module[{paletteConnected, transportMode, executorState, p
         Style["Running request: ", Bold],
         ToString[Lookup[runningRequest, "tool", "request"]],
         If[StringQ[Lookup[runningRequest, "requestId", ""]], " (" <> Lookup[runningRequest, "requestId", ""] <> ")", Nothing],
-        If[NumberQ[elapsedSeconds], " • " <> ToString[elapsedSeconds] <> "s", Nothing]
+        If[NumberQ[elapsedSeconds], " \[Bullet] " <> ToString[elapsedSeconds] <> "s", Nothing]
       },
       Nothing
     ]],
@@ -359,7 +363,9 @@ PermissionsPanel[] := Panel[
           {PalettePermissionRow["Modify cell", "ModifyCell", $ActiveNotebookId]},
           {PalettePermissionRow["Delete cell", "DeleteCell", $ActiveNotebookId]},
           {PalettePermissionRow["Run cell", "RunCell", $ActiveNotebookId]},
-          {PalettePermissionRow["Save notebook", "SaveNotebook", $ActiveNotebookId]}
+          {PalettePermissionRow["Save notebook", "SaveNotebook", $ActiveNotebookId]},
+          {PalettePermissionRow["Create notebook", "CreateNotebook", $ActiveNotebookId]},
+          {PalettePermissionRow["Open notebook", "OpenNotebook", $ActiveNotebookId]}
         },
         Alignment -> Left,
         Spacings -> {1, 0.35}
@@ -1467,6 +1473,39 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
   <|"status" -> "restarted", "notebookId" -> notebookId|>
 ];
 
+CreateNotebookRequest[args_Association] := Module[{title, nb, notebookId, payload, response},
+  title = Lookup[args, "title", "Untitled"];
+  If[!StringQ[title] || StringLength[StringTrim[title]] == 0, title = "Untitled"];
+  nb = Quiet @ Check[CreateDocument[{}, WindowTitle -> title, Visible -> True], $Failed];
+  If[Head[nb] =!= NotebookObject, Return[Failure["CREATE_FAILED", <|"message" -> "The FrontEnd failed to create the notebook."|>]]];
+  payload = NotebookHeartbeatPayload[nb];
+  response = Quiet @ Check[BridgePost["/notebooks/heartbeat", payload], $Failed];
+  notebookId = If[AssociationQ[response],
+    Lookup[Lookup[response, "notebook", <||>], "notebookId", Lookup[response, "notebookId", None]],
+    None
+  ];
+  <|"status" -> "created", "notebookId" -> notebookId, "title" -> title|>
+];
+
+OpenNotebookRequest[args_Association] := Module[{path, nb, notebookId, payload, response},
+  path = Lookup[args, "path", ""];
+  If[!StringQ[path] || StringLength[StringTrim[path]] == 0,
+    Return[Failure["BAD_REQUEST", <|"message" -> "path is required."|>]]
+  ];
+  If[!FileExistsQ[path],
+    Return[Failure["NOT_FOUND", <|"message" -> "File not found: " <> path|>]]
+  ];
+  nb = Quiet @ Check[NotebookOpen[path, Visible -> True], $Failed];
+  If[Head[nb] =!= NotebookObject, Return[Failure["OPEN_FAILED", <|"message" -> "The FrontEnd failed to open the notebook."|>]]];
+  payload = NotebookHeartbeatPayload[nb];
+  response = Quiet @ Check[BridgePost["/notebooks/heartbeat", payload], $Failed];
+  notebookId = If[AssociationQ[response],
+    Lookup[Lookup[response, "notebook", <||>], "notebookId", Lookup[response, "notebookId", None]],
+    None
+  ];
+  <|"status" -> "opened", "notebookId" -> notebookId, "path" -> path|>
+];
+
 SaveNotebookRequest[args_Association] := Module[{notebookId, record, notebook},
   notebookId = TargetNotebookId[args];
   If[Not @ ConfirmAction["SaveNotebook", "AI requests saving the notebook. Allow?", notebookId], Return[$Canceled]];
@@ -1843,6 +1882,8 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
           "mma_abort_evaluation", AbortEvaluationRequest[args],
           "mma_kill_kernel", KillKernelRequest[args],
           "mma_restart_kernel", RestartKernelRequest[args],
+          "mma_create_notebook", CreateNotebookRequest[args],
+          "mma_open_notebook", OpenNotebookRequest[args],
           "mma_get_cell_output", GetCellOutputById[args],
           "mma_read_artifact", ReadArtifactById[args],
           "mma_save_notebook", SaveNotebookRequest[args],

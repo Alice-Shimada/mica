@@ -4,6 +4,7 @@ import type { BackendState } from "../backend/backendState.js";
 import { DEFAULT_TIMEOUTS_MS, type NotebookRecord } from "../backend/protocol.js";
 import {
   abortEvaluationSchema,
+  createNotebookSchema,
   deleteCellSchema,
   getCellOutputSchema,
   insertCellSchema,
@@ -11,6 +12,7 @@ import {
   listCellsSchema,
   modifyCellSchema,
   noArgsSchema,
+  openNotebookSchema,
   readArtifactSchema,
   readCellSchema,
   restartKernelSchema,
@@ -259,10 +261,20 @@ export const MICA_BACKEND_TOOL_DEFINITIONS: MicaMcpToolDefinition[] = [
     description: notebookToolDescription("List notebooks registered with the Mathematica bridge Palette."),
     schema: noArgsSchema.shape,
   },
-  {
+{
     name: "mma_select_notebook",
     description: notebookToolDescription("Select the active Mathematica notebook in the backend registry."),
     schema: selectNotebookSchema.shape,
+  },
+  {
+    name: "mma_create_notebook",
+    description: notebookToolDescription("Create a new blank notebook in the Wolfram FrontEnd with the given window title."),
+    schema: createNotebookSchema.shape,
+  },
+  {
+    name: "mma_open_notebook",
+    description: notebookToolDescription("Open an existing notebook file (.nb) from disk in the Wolfram FrontEnd."),
+    schema: openNotebookSchema.shape,
   },
   ...queuedNotebookTools.map((config) => ({
     name: config.name,
@@ -298,13 +310,35 @@ export async function executeBackendMcpTool(
     });
   }
 
-  if (tool === "mma_select_notebook") {
+if (tool === "mma_select_notebook") {
     return withToolErrors({ tool, args: recordArgs }, () => {
       const clientSessionId = extra?.sessionId;
       const target = resolveToolTarget(state, recordArgs, extra);
       state.setActiveNotebook(target.notebook.notebookId);
       if (clientSessionId) state.setActiveNotebook(target.notebook.notebookId, clientSessionId);
       return toolSuccess({ activeNotebookId: state.activeNotebookId, notebook: target.notebook });
+    });
+  }
+
+  // Agent-level tools: route to any live agent without requiring a notebook target
+  if (tool === "mma_create_notebook" || tool === "mma_open_notebook") {
+    return withToolErrors({ tool, args: recordArgs }, () => {
+      sweepStateLiveness(state);
+      const live = state.agents.list().find((a) => !a.offline && !a.retired);
+      if (!live) throw new Error("NO_LIVE_AGENT");
+      const notebook = state.notebooks.listLive().find((n) => n.agentSessionId === live.agentSessionId);
+      if (!notebook) throw new Error("NO_LIVE_NOTEBOOK");
+      const requestId = randomUUID();
+      state.queue.enqueue({
+        requestId,
+        tool,
+        arguments: recordArgs,
+        targetNotebookId: notebook.notebookId,
+        agentSessionId: live.agentSessionId,
+        timeoutMs: DEFAULT_TIMEOUTS_MS.mutation,
+        createdAt: Date.now(),
+      });
+      return toolSuccess({ status: "queued", requestId });
     });
   }
 

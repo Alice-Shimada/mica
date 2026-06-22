@@ -12,6 +12,8 @@ const permissions = {
   DeleteCell: true,
   RunCell: true,
   SaveNotebook: true,
+  CreateNotebook: false,
+  OpenNotebook: false,
 };
 
 const servers: Array<{ stop: () => Promise<void> }> = [];

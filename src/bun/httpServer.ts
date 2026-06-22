@@ -432,7 +432,7 @@ function readPermissions(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("BAD_REQUEST");
 
   const record = value as Record<string, unknown>;
-  const keys = ["ReadNotebook", "InsertCell", "ModifyCell", "DeleteCell", "RunCell", "SaveNotebook"] as const;
+  const keys = ["ReadNotebook", "InsertCell", "ModifyCell", "DeleteCell", "RunCell", "SaveNotebook", "CreateNotebook", "OpenNotebook"] as const;
   const permissions = {} as Record<(typeof keys)[number], boolean>;
 
   for (const key of keys) {

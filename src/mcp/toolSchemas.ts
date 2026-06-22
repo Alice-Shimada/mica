@@ -56,6 +56,14 @@ export const restartKernelSchema = z.object({
   ...notebookSelectorFields
 }).strict();
 
+export const createNotebookSchema = z.object({
+  title: z.string().min(1).describe("Window title for the new notebook")
+}).strict();
+
+export const openNotebookSchema = z.object({
+  path: z.string().min(1).describe("Absolute path to an existing .nb file")
+}).strict();
+
 export const getCellOutputSchema = z.object({
   ...notebookSelectorFields,
   cellId: z.string().min(1),

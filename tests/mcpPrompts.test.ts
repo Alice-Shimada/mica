@@ -66,6 +66,8 @@ describe("MICA MCP prompts", () => {
 "mma_abort_evaluation",
       "mma_kill_kernel",
       "mma_restart_kernel",
+      "mma_create_notebook",
+      "mma_open_notebook",
       "mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",

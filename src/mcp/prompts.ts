@@ -16,6 +16,8 @@ const TOOL_GUIDE = [
 ["mma_abort_evaluation", "Abort a running notebook evaluation."],
   ["mma_kill_kernel", "Quit the Wolfram kernel for a notebook (control agent kernel is protected)."],
   ["mma_restart_kernel", "Restart the Wolfram kernel for a notebook so it can evaluate cells again."],
+  ["mma_create_notebook", "Create a new blank notebook in the Wolfram FrontEnd."],
+  ["mma_open_notebook", "Open an existing notebook file (.nb) from disk in the Wolfram FrontEnd."],
   ["mma_get_cell_output", "Read output and messages produced by one cell; this may refresh completed run status."],
   ["mma_read_artifact", "Read large output or message artifacts by byte page; ids may become stale after notebook edits or reruns."],
   ["mma_save_notebook", "Save the selected notebook when SaveNotebook permission is granted."],

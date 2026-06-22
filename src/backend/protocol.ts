@@ -31,6 +31,8 @@ export type Permissions = {
   DeleteCell: boolean;
   RunCell: boolean;
   SaveNotebook: boolean;
+  CreateNotebook: boolean;
+  OpenNotebook: boolean;
 };
 
 export type AgentRetiredReason = "superseded" | "no_live_notebooks";

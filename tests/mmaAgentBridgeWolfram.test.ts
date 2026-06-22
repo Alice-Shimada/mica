@@ -153,6 +153,14 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('NotebookEvaluate[notebook, "Null", InsertResults -> False]');
     expect(source).toContain('"PROTECTED_EVALUATOR"');
     expect(source).toContain('KeyDropFrom[$BridgeNotebookPermissions, notebookId]');
+    expect(source).toContain('"mma_create_notebook", CreateNotebookRequest[args]');
+    expect(source).toContain('"mma_open_notebook", OpenNotebookRequest[args]');
+    expect(source).toContain('CreateNotebookRequest[args_Association]');
+    expect(source).toContain('OpenNotebookRequest[args_Association]');
+    expect(source).toContain('CreateDocument[{}, WindowTitle -> title, Visible -> True]');
+    expect(source).toContain('NotebookOpen[path, Visible -> True]');
+    expect(source).toContain('"CreateNotebook" -> False');
+    expect(source).toContain('"OpenNotebook" -> False');
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
     expect(abortBody).toContain('FinishRunningCell["finished"]');
     expect(abortBody).toContain('<|"status" -> "finished", "cellId" -> runningCellId, "requestId" -> runningRequestId|>');
@@ -633,6 +641,8 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
       'PalettePermissionRow["Delete cell", "DeleteCell", $ActiveNotebookId]',
       'PalettePermissionRow["Run cell", "RunCell", $ActiveNotebookId]',
       'PalettePermissionRow["Save notebook", "SaveNotebook", $ActiveNotebookId]',
+      'PalettePermissionRow["Create notebook", "CreateNotebook", $ActiveNotebookId]',
+      'PalettePermissionRow["Open notebook", "OpenNotebook", $ActiveNotebookId]',
       'Dynamic[perms[key],',
       'SetNotebookPermissions[notebookId,',
       'PostPermissions[] := Module[',

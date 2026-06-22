@@ -28,13 +28,15 @@ function disableSessionFileWrites() {
 
 function makeBackendState() {
   const now = Date.now();
-  const permissions = {
+const permissions = {
     ReadNotebook: true,
     InsertCell: true,
     ModifyCell: true,
     DeleteCell: true,
     RunCell: true,
-    SaveNotebook: true
+    SaveNotebook: true,
+    CreateNotebook: false,
+    OpenNotebook: false,
   };
 
   const state = new BackendState(() => "nb-1");
@@ -305,6 +307,8 @@ describe("Bun backend MCP compatibility", () => {
       "mma_status",
       "mma_list_notebooks",
       "mma_select_notebook",
+      "mma_create_notebook",
+      "mma_open_notebook",
       "mma_symbol_lookup",
       "mma_list_cells",
       "mma_read_cell",

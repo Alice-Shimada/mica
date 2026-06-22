@@ -39,6 +39,8 @@ describe("proxy MCP tools", () => {
       "mma_status",
       "mma_list_notebooks",
       "mma_select_notebook",
+      "mma_create_notebook",
+      "mma_open_notebook",
       "mma_symbol_lookup",
       "mma_list_cells",
       "mma_read_cell",

@@ -25,6 +25,8 @@ function makeNotebook(state: BackendState, overrides: Record<string, unknown> = 
       DeleteCell: true,
       RunCell: true,
       SaveNotebook: true,
+      CreateNotebook: false,
+      OpenNotebook: false,
     },
     seenAt: Date.now(),
     ...overrides,
@@ -82,6 +84,8 @@ describe("backend MCP tool resolution", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
       seenAt: now - 1_000,
     });
@@ -138,6 +142,8 @@ describe("backend MCP tool resolution", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
       seenAt: now - 4_000,
     });
@@ -175,6 +181,8 @@ describe("backend MCP tool resolution", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
       seenAt: now,
     });
@@ -187,10 +195,12 @@ describe("backend MCP tool registration", () => {
   it("registers every backend MCP tool", () => {
     const registrations = registerTools(makeState());
 
-    expect(registrations.map((entry) => entry.name)).toEqual([
+expect(registrations.map((entry) => entry.name)).toEqual([
       "mma_status",
       "mma_list_notebooks",
       "mma_select_notebook",
+      "mma_create_notebook",
+      "mma_open_notebook",
       "mma_symbol_lookup",
       "mma_list_cells",
       "mma_read_cell",
@@ -198,7 +208,7 @@ describe("backend MCP tool registration", () => {
       "mma_modify_cell",
       "mma_delete_cell",
       "mma_run_cell",
-"mma_abort_evaluation",
+      "mma_abort_evaluation",
       "mma_kill_kernel",
       "mma_restart_kernel",
       "mma_get_cell_output",
@@ -363,6 +373,8 @@ describe("backend MCP tool registration", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
     });
     state.activeNotebookId = notebook.notebookId;
@@ -722,6 +734,8 @@ describe("backend MCP tool registration", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
       seenAt: now,
     });
@@ -756,6 +770,8 @@ describe("backend MCP tool registration", () => {
         DeleteCell: true,
         RunCell: true,
         SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: false,
       },
       seenAt: now - 4_000,
     });
@@ -986,6 +1002,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: now,
       });
@@ -1003,6 +1021,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: now,
       });
@@ -1101,6 +1121,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: now,
       });
@@ -1118,6 +1140,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: now,
       });
@@ -1167,6 +1191,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: 0,
       });
@@ -1297,6 +1323,8 @@ describe("backend MCP tool registration", () => {
           DeleteCell: true,
           RunCell: true,
           SaveNotebook: true,
+          CreateNotebook: false,
+          OpenNotebook: false,
         },
         seenAt: now,
       });

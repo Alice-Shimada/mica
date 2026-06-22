@@ -9,6 +9,8 @@ const permissions = {
   DeleteCell: true,
   RunCell: true,
   SaveNotebook: true,
+  CreateNotebook: false,
+  OpenNotebook: false,
 };
 
 function heartbeat(overrides: Partial<NotebookHeartbeat> = {}): NotebookHeartbeat {
