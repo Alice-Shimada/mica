@@ -190,8 +190,8 @@ const queuedNotebookTools: QueuedNotebookTool[] = [
     summary: "Run one cell in the attached Mathematica notebook.",
     schema: runCellSchema.shape,
     permission: "RunCell",
-    timeoutMs: (args) => {
-      const timeoutSec = typeof args.timeoutSec === "number" ? args.timeoutSec : 120;
+timeoutMs: (args) => {
+      const timeoutSec = typeof args.timeoutSec === "number" ? args.timeoutSec : 86_400;
       return timeoutSec * 1000;
     },
     requiresExplicitTarget: true,

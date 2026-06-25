@@ -1376,7 +1376,7 @@ DeleteCellRequest[args_Association] := Module[{notebookId, record, notebook, cel
   <|"status" -> "deleted", "cellId" -> cellId, "deletedArtifactCount" -> Length[artifacts]|>
 ];
 
-RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, timeoutSec = Lookup[args, "timeoutSec", 120], installedEpilog, evaluateResult},
+RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, timeoutSec = Lookup[args, "timeoutSec", Infinity], installedEpilog, evaluateResult},
   notebookId = TargetNotebookId[args];
   If[Not @ ConfirmAction["RunCell", "AI requests running 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1402,8 +1402,7 @@ RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId
   $RunningNotebookId = notebookId;
   $RunningNotebookObject = notebook;
   $RunningStartedAt = AbsoluteTime[];
-  If[!NumericQ[timeoutSec], timeoutSec = 120];
-  $RunningTimeoutAt = AbsoluteTime[] + timeoutSec;
+  $RunningTimeoutAt = If[NumericQ[timeoutSec] && timeoutSec < Infinity, AbsoluteTime[] + timeoutSec, Infinity];
   SelectionMove[cell, All, Cell];
   (* RunCell returns immediately; Palette-local cancellation can still abort the running evaluation. *)
   evaluateResult = Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], $Failed];

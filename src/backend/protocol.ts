@@ -7,7 +7,7 @@ export const DEFAULT_TIMEOUTS_MS = {
   readCell: 10_000,
   mutation: 10_000,
   insertCell: 60_000,
-  runCell: 120_000,
+  runCell: 3_600_000,
   symbolLookup: 30_000,
   agentHeartbeatDegradedMs: 10_000,
   agentHeartbeatOfflineMs: 30_000,

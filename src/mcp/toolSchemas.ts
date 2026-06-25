@@ -41,7 +41,7 @@ export const deleteCellSchema = z.object({
 export const runCellSchema = z.object({
   ...notebookSelectorFields,
   cellId: z.string().min(1),
-  timeoutSec: z.number().int().positive().max(3600).default(120)
+  timeoutSec: z.number().int().positive().optional()
 }).strict();
 
 export const abortEvaluationSchema = z.object({

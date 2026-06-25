@@ -12,7 +12,7 @@ describe("backend protocol", () => {
     expect(DEFAULT_TIMEOUTS_MS.readCell).toBe(10_000);
     expect(DEFAULT_TIMEOUTS_MS.mutation).toBe(10_000);
     expect(DEFAULT_TIMEOUTS_MS.insertCell).toBe(60_000);
-    expect(DEFAULT_TIMEOUTS_MS.runCell).toBe(120_000);
+    expect(DEFAULT_TIMEOUTS_MS.runCell).toBe(3_600_000);
     expect(DEFAULT_TIMEOUTS_MS.symbolLookup).toBe(30_000);
     expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatDegradedMs).toBe(10_000);
     expect(DEFAULT_TIMEOUTS_MS.agentHeartbeatOfflineMs).toBe(30_000);
