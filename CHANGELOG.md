@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.0 - 2026-06-16
+
+- Add `mma_create_notebook` tool: create a new blank notebook in the Wolfram FrontEnd.
+- Add `mma_open_notebook` tool: open an existing notebook file (.nb) from disk.
+- Add `CreateNotebook` and `OpenNotebook` permissions (default false).
+- Fix agent-level tools when no live notebook exists for routing.
+
 ## 1.1.1 - 2026-06-16
 
 - Fix `RestartKernelRequest`: kill kernel via `Quit[]` before restarting.

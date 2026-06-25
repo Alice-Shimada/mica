@@ -59,7 +59,7 @@ type McpCallBody = {
 };
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
-const DEFAULT_VERSION = "1.1.1";
+const DEFAULT_VERSION = "1.2.0";
 
 export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken, version = DEFAULT_VERSION }: BunHttpAppOptions): Promise<BunHttpApp> {
   const runtimeInfo: DashboardRuntimeInfo = {
