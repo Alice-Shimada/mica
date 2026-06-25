@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 - 2026-06-17
+
+- Add watchdog on agent tick loop: force-reset `$HiddenAgentInProgress` if stuck > 120s.
+- Add periodic backend sweep (every 10s) for liveness and timed-out requests.
+- Fix `markTimedOut` to use `claimedAt` for running requests.
+- Remove `runCell` timeout upper bound; default to no timeout.
+
 ## 1.2.0 - 2026-06-16
 
 - Add `mma_create_notebook` tool: create a new blank notebook in the Wolfram FrontEnd.
