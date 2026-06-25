@@ -829,6 +829,8 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(tickBody).toContain('Block[{$BridgeHTTPTimeoutSeconds = 1, $BridgeHTTPRetryCount = 1},');
     expect(tickBody).toMatch(/Internal`WithLocalSettings\[\s*\$HiddenAgentInProgress = True,\s*\(?\s*Block\[/);
     expect(tickBody).toContain('$HiddenAgentInProgress = False');
+    expect(tickBody).toContain('$HiddenAgentStartedAt');
+    expect(tickBody).toContain('AbsoluteTime[] - $HiddenAgentStartedAt > 120');
   });
 
   it("keeps hidden-agent request execution outside the short polling HTTP timeout", () => {

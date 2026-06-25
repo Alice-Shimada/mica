@@ -113,7 +113,10 @@ export class BackendQueue {
 
     for (const request of this.requests.values()) {
       if (request.status !== "queued" && request.status !== "running") continue;
-      if (now - request.createdAt < request.timeoutMs) continue;
+      const elapsed = request.status === "running" && request.claimedAt
+        ? now - request.claimedAt
+        : now - request.createdAt;
+      if (elapsed < request.timeoutMs) continue;
 
       const updated = this.cloneRequest({ ...request, status: "timed_out" });
       this.requests.set(request.requestId, updated);

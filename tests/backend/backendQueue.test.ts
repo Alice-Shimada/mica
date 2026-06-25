@@ -110,9 +110,12 @@ describe("BackendQueue", () => {
     queue.enqueue({ requestId: "r2", tool: "t", arguments: {}, targetNotebookId: "n1", agentSessionId: "agent-1", timeoutMs: 5_000, createdAt: 1_000 });
     queue.claimNext("agent-1", 1_500);
 
-    expect(queue.markTimedOut(2_100)).toEqual(["r1"]);
+    // r1 claimed at 1500, timeout 1000 → times out at 2500
+    expect(queue.markTimedOut(2_100)).toEqual([]);
+    expect(queue.markTimedOut(2_600)).toEqual(["r1"]);
     expect(queue.snapshot().timed_out.map((request) => request.requestId)).toEqual(["r1"]);
 
+    // r2 claimed at 1500, timeout 5000 → times out at 6500
     expect(queue.markTimedOut(7_000)).toEqual(["r2"]);
     expect(queue.snapshot().timed_out.map((request) => request.requestId)).toEqual(["r1", "r2"]);
   });

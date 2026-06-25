@@ -1699,7 +1699,15 @@ ExecuteAgentRequest[request_Association] := Module[{args = Lookup[request, "argu
 ];
 
 SafeHiddenAgentTick[] := Module[{payload, request},
-  If[TrueQ[$HiddenAgentInProgress], Return[$LastResultStatus]];
+  If[TrueQ[$HiddenAgentInProgress],
+    If[NumberQ[$HiddenAgentStartedAt] && AbsoluteTime[] - $HiddenAgentStartedAt > 120,
+$HiddenAgentInProgress = False;
+$HiddenAgentStartedAt = None;
+      $HiddenAgentStartedAt = None,
+      Return[$LastResultStatus]
+    ]
+  ];
+  $HiddenAgentStartedAt = AbsoluteTime[];
   Internal`WithLocalSettings[
     $HiddenAgentInProgress = True,
     (
@@ -1724,7 +1732,9 @@ SafeHiddenAgentTick[] := Module[{payload, request},
     ];
     Null
     ),
-    $HiddenAgentInProgress = False
+$HiddenAgentInProgress = False;
+  $HiddenAgentStartedAt = None;
+    $HiddenAgentStartedAt = None
   ]
 ];
 
