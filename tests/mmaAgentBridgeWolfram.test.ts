@@ -172,6 +172,20 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(evaluatorAbortIndex).toBeGreaterThan(abortStatusIndex);
   });
 
+  it("restarts kernels by quitting before forcing a fresh evaluation", () => {
+    const restartStart = source.indexOf("RestartKernelRequest[args_Association]");
+    const restartEnd = source.indexOf("CreateNotebookRequest[args_Association]", restartStart);
+    const restartBody = source.slice(restartStart, restartEnd);
+    const quitIndex = restartBody.indexOf('NotebookEvaluate[notebook, "Quit[]", InsertResults -> False]');
+    const nullIndex = restartBody.indexOf('NotebookEvaluate[notebook, "Null", InsertResults -> False]');
+
+    expect(restartStart).toBeGreaterThanOrEqual(0);
+    expect(restartEnd).toBeGreaterThan(restartStart);
+    expect(quitIndex).toBeGreaterThanOrEqual(0);
+    expect(nullIndex).toBeGreaterThan(quitIndex);
+    expect(restartBody).not.toContain('FrontEndTokenExecute[notebook, "EvaluatorQuit"]');
+  });
+
   it("keeps cancellation status when a running cell exists", () => {
     const cancelStart = source.indexOf("CancelCurrentRequest[] := Module");
     const cancelEnd = source.indexOf("StartMMAAgentPalette[] := Module", cancelStart);

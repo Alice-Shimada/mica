@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2 - 2026-06-30
+
+- Fix `mma_restart_kernel` reliability: keep restart on the explicit `Quit[]` path and guard against regressing to `EvaluatorQuit`.
+- Give kernel kill/restart operations a longer 60s backend timeout so slow Wolfram FrontEnd restarts do not time out as generic mutations.
+- Change `mma_open_notebook` to launch `.nb` files through the local OS default application so Mathematica can start even when no MICA agent is connected.
+
 ## 1.2.1 - 2026-06-17
 
 - Add watchdog on agent tick loop: force-reset `$HiddenAgentInProgress` if stuck > 120s.

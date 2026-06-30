@@ -28,6 +28,11 @@ type ErrorDefinition = {
 };
 
 const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
+  BAD_REQUEST: {
+    code: "BAD_REQUEST",
+    message: "The MCP tool arguments are invalid.",
+    retryable: false,
+  },
   AMBIGUOUS_NOTEBOOK_NAME: {
     code: "AMBIGUOUS_NOTEBOOK_NAME",
     message: "More than one live notebook matches that display name.",
@@ -36,6 +41,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
   EXPLICIT_NOTEBOOK_REQUIRED: {
     code: "EXPLICIT_NOTEBOOK_REQUIRED",
     message: "Strict targeting is enabled. Provide notebookId or displayName explicitly for mutating operations.",
+    retryable: false,
+  },
+  FILE_NOT_FOUND: {
+    code: "FILE_NOT_FOUND",
+    message: "The requested file was not found.",
     retryable: false,
   },
   NOTEBOOK_CLOSED: {
@@ -68,6 +78,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     message: "No live Mathematica control agent is registered.",
     retryable: true,
   },
+  OPEN_FAILED: {
+    code: "OPEN_FAILED",
+    message: "The local operating system failed to open the notebook.",
+    retryable: true,
+  },
   PALETTE_NOT_CONNECTED: {
     code: "PALETTE_NOT_CONNECTED",
     message: "The Mathematica bridge palette is not connected.",
@@ -91,6 +106,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
   UNSUPPORTED_SELECTOR: {
     code: "UNSUPPORTED_SELECTOR",
     message: "That notebook selector is not supported by this MCP transport.",
+    retryable: false,
+  },
+  UNSUPPORTED_PLATFORM: {
+    code: "UNSUPPORTED_PLATFORM",
+    message: "This platform is not supported for opening notebooks via the default app.",
     retryable: false,
   },
   WOLFRAM_AGENT_ERROR: {

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BackendState } from "../backend/backendState.js";
+import { openNotebookWithDefaultApp } from "../backend/openNotebookViaOs.js";
 import { DEFAULT_TIMEOUTS_MS, type NotebookRecord } from "../backend/protocol.js";
 import {
   abortEvaluationSchema,
@@ -209,7 +210,7 @@ timeoutMs: (args) => {
     summary: "Quit the Wolfram kernel for a notebook. The control agent kernel is protected and cannot be killed.",
     schema: killKernelSchema.shape,
     permission: "RunCell",
-    timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+    timeoutMs: () => DEFAULT_TIMEOUTS_MS.kernelLifecycle,
     requiresExplicitTarget: true,
   },
   {
@@ -217,7 +218,7 @@ timeoutMs: (args) => {
     summary: "Restart the Wolfram kernel for a notebook so it can evaluate cells again.",
     schema: restartKernelSchema.shape,
     permission: "RunCell",
-    timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+    timeoutMs: () => DEFAULT_TIMEOUTS_MS.kernelLifecycle,
     requiresExplicitTarget: true,
   },
   {
@@ -273,7 +274,7 @@ export const MICA_BACKEND_TOOL_DEFINITIONS: MicaMcpToolDefinition[] = [
   },
   {
     name: "mma_open_notebook",
-    description: notebookToolDescription("Open an existing notebook file (.nb) from disk in the Wolfram FrontEnd."),
+    description: notebookToolDescription("Open an existing notebook file (.nb) from disk using the local OS default application."),
     schema: openNotebookSchema.shape,
   },
   ...queuedNotebookTools.map((config) => ({
@@ -320,8 +321,16 @@ if (tool === "mma_select_notebook") {
     });
   }
 
+  if (tool === "mma_open_notebook") {
+    return withToolErrors({ tool, args: recordArgs }, async () => {
+      const notebookPath = recordArgs.path;
+      if (typeof notebookPath !== "string") throw new Error("BAD_REQUEST: path is required.");
+      return toolSuccess(await openNotebookWithDefaultApp(notebookPath));
+    });
+  }
+
   // Agent-level tools: route to any live agent without requiring a notebook target
-  if (tool === "mma_create_notebook" || tool === "mma_open_notebook") {
+  if (tool === "mma_create_notebook") {
     return withToolErrors({ tool, args: recordArgs }, () => {
       sweepStateLiveness(state);
       const live = state.agents.list().find((a) => !a.offline && !a.retired);

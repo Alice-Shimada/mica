@@ -514,6 +514,32 @@ expect(registrations.map((entry) => entry.name)).toEqual([
     expect(resultByTool.size).toBe(11);
   });
 
+  it("gives kernel lifecycle operations enough time for slow frontend restarts", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state);
+    state.activeNotebookId = notebook.notebookId;
+    const registrations = registerTools(state);
+
+    const killResult = registrationByName(registrations, "mma_kill_kernel").handler({});
+    const restartResult = registrationByName(registrations, "mma_restart_kernel").handler({});
+
+    const queued = state.queue.snapshot().queued;
+    expect(queued).toHaveLength(2);
+    expect(queued[0]).toMatchObject({ tool: "mma_kill_kernel", timeoutMs: 60_000 });
+    expect(queued[1]).toMatchObject({ tool: "mma_restart_kernel", timeoutMs: 60_000 });
+
+    for (const request of queued) {
+      state.queue.resolve(request.requestId, { tool: request.tool }, request.createdAt + 1);
+    }
+
+    await expect(killResult).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ tool: "mma_kill_kernel" }),
+    });
+    await expect(restartResult).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ tool: "mma_restart_kernel" }),
+    });
+  });
+
   it("awaits hidden-agent results and returns the result object directly", async () => {
     const state = makeState();
     const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });
