@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.3 - 2026-07-03
+
+- Fix Wolfram permission fallback so notebook heartbeats inherit current global permissions instead of reverting `RunCell` and other controls to defaults.
+- Preserve notebook-scoped permission overrides when launching the hidden control-kernel agent.
+- Require explicit Wolfram-side confirmation for notebook create/open requests using the existing `CreateNotebook` and `OpenNotebook` permissions.
+
 ## 1.2.2 - 2026-06-30
 
 - Fix `mma_restart_kernel` reliability: keep restart on the explicit `Quit[]` path and guard against regressing to `EvaluatorQuit`.

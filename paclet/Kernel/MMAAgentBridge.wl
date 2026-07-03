@@ -126,24 +126,42 @@ If[!AssociationQ[Quiet @ Check[$BridgePermissions, None]],
   $BridgePermissions = $DefaultBridgePermissions
 ];
 
+CurrentBridgePermissions[] := Join[
+  $DefaultBridgePermissions,
+  If[AssociationQ[Quiet @ Check[$BridgePermissions, None]], $BridgePermissions, <||>]
+];
+
+$BridgePermissions = CurrentBridgePermissions[];
+
 If[!AssociationQ[Quiet @ Check[$BridgeNotebookPermissions, None]],
   $BridgeNotebookPermissions = <||>
 ];
 
-NotebookPermissions[notebookId_String] := Lookup[$BridgeNotebookPermissions, notebookId, $DefaultBridgePermissions];
+NotebookPermissions[notebookId_String] := Join[CurrentBridgePermissions[], Lookup[$BridgeNotebookPermissions, notebookId, <||>]];
 
 SetNotebookPermissions[notebookId_String, perms_Association] := (
   $BridgeNotebookPermissions[notebookId] = perms
 );
 
+PermissionSnapshot[] := <|
+  "global" -> CurrentBridgePermissions[],
+  "notebooks" -> $BridgeNotebookPermissions
+|>;
+
+RestorePermissionSnapshot[snapshot_Association] := (
+  $BridgePermissions = Join[$DefaultBridgePermissions, Lookup[snapshot, "global", <||>]];
+  $BridgeNotebookPermissions = Lookup[snapshot, "notebooks", <||>];
+  snapshot
+);
+
 PalettePermissionRow[label_String, key_String, notebookId_:None] := Module[{perms, setter},
   perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
     NotebookPermissions[notebookId],
-    $BridgePermissions
+    CurrentBridgePermissions[]
   ];
   setter = If[StringQ[notebookId] && StringLength[notebookId] > 0,
     Function[val, SetNotebookPermissions[notebookId, Join[perms, <|key -> val|>]]],
-    Function[val, $BridgePermissions[key] = val; Quiet @ Check[PostPermissions[], Null]]
+    Function[val, $BridgePermissions = Join[CurrentBridgePermissions[], <|key -> val|>]; Quiet @ Check[PostPermissions[], Null]]
   ];
   Row[{
     Checkbox[Dynamic[perms[key], (setter[#]) &]],
@@ -612,14 +630,14 @@ BridgePost[path_String, payload_Association] := Module[{response},
   JsonByteArrayToPayload[response["BodyByteArray"]]
 ];
 
-PostPermissions[] := Module[{payload = <|"permissions" -> $BridgePermissions|>},
+PostPermissions[] := Module[{payload = <|"permissions" -> CurrentBridgePermissions[]|>},
   Quiet @ Check[BridgePost["/permissions", payload], $Failed]
 ];
 
 NeedsConfirmationQ[action_String, notebookId_:None] := Module[{perms},
   perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
     NotebookPermissions[notebookId],
-    $BridgePermissions
+    CurrentBridgePermissions[]
   ];
   Not @ TrueQ[perms[action]]
 ];
@@ -1475,6 +1493,7 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
 CreateNotebookRequest[args_Association] := Module[{title, nb, notebookId, payload, response},
   title = Lookup[args, "title", "Untitled"];
   If[!StringQ[title] || StringLength[StringTrim[title]] == 0, title = "Untitled"];
+  If[Not @ ConfirmAction["CreateNotebook", "AI requests creating a notebook. Allow?"], Return[$Canceled]];
   nb = Quiet @ Check[CreateDocument[{}, WindowTitle -> title, Visible -> True], $Failed];
   If[Head[nb] =!= NotebookObject, Return[Failure["CREATE_FAILED", <|"message" -> "The FrontEnd failed to create the notebook."|>]]];
   payload = NotebookHeartbeatPayload[nb];
@@ -1494,6 +1513,7 @@ OpenNotebookRequest[args_Association] := Module[{path, nb, notebookId, payload, 
   If[!FileExistsQ[path],
     Return[Failure["NOT_FOUND", <|"message" -> "File not found: " <> path|>]]
   ];
+  If[Not @ ConfirmAction["OpenNotebook", "AI requests opening a notebook. Allow?"], Return[$Canceled]];
   nb = Quiet @ Check[NotebookOpen[path, Visible -> True], $Failed];
   If[Head[nb] =!= NotebookObject, Return[Failure["OPEN_FAILED", <|"message" -> "The FrontEnd failed to open the notebook."|>]]];
   payload = NotebookHeartbeatPayload[nb];
@@ -1569,7 +1589,7 @@ NotebookHeartbeatPayload[nb_NotebookObject, notebookId_:None] := Module[{savedPa
   displayName = NotebookDisplayNameForHeartbeat[nb, savedPath, frontendObjectKey];
   perms = If[StringQ[notebookId] && StringLength[notebookId] > 0,
     NotebookPermissions[notebookId],
-    $DefaultBridgePermissions
+    CurrentBridgePermissions[]
   ];
   <|
     "agentSessionId" -> $AgentSessionId,
@@ -1785,16 +1805,16 @@ EnsureControlEvaluator[evaluatorName_String] := Module[{before, beforeAssoc, con
   <|"status" -> "created", "evaluatorName" -> evaluatorName, "spec" -> Lookup[afterAssoc, evaluatorName]|>
 ];
 
-ControlAgentInitCode[permissions_Association] := Module[{source = $MMAAgentBridgeSourceFile},
+ControlAgentInitCode[permissionSnapshot_Association] := Module[{source = $MMAAgentBridgeSourceFile},
   StringJoin[
     "Quiet @ Check[CurrentValue[$FrontEndSession, {TaggingRules, \"MMAAgentBridge\", \"ControlKernelBooting\"}] = Inherited, Null];\n",
     "If[StringQ[", ToString[source, InputForm], "] && FileExistsQ[", ToString[source, InputForm], "], Get[ToString[", ToString[source, InputForm], "]], Needs[\"MMAAgentBridge`\"]];\n",
-    "MMAAgentBridge`Private`$BridgePermissions = ", ToString[permissions, InputForm], ";\n",
+    "MMAAgentBridge`Private`RestorePermissionSnapshot[", ToString[permissionSnapshot, InputForm], "];\n",
     "MMAAgentBridge`StartMMAAgentHiddenAgent[]"
   ]
 ];
 
-StartMMAAgentControlKernel[evaluatorName_String:$ControlAgentEvaluatorName, stopCurrentAgent_:True] := Module[{evaluatorStatus, permissions, initCode},
+StartMMAAgentControlKernel[evaluatorName_String:$ControlAgentEvaluatorName, stopCurrentAgent_:True] := Module[{evaluatorStatus, permissionSnapshot, initCode},
   If[ControlNotebookOpenQ[$ControlAgentNotebook],
     Return[<|"status" -> "already_running", "evaluatorName" -> evaluatorName|>]
   ];
@@ -1804,8 +1824,8 @@ StartMMAAgentControlKernel[evaluatorName_String:$ControlAgentEvaluatorName, stop
     ClearControlAgentFlag["ControlKernelBooting"];
     Return[evaluatorStatus]
   ];
-  permissions = $BridgePermissions;
-  initCode = ControlAgentInitCode[permissions];
+  permissionSnapshot = PermissionSnapshot[];
+  initCode = ControlAgentInitCode[permissionSnapshot];
   If[TrueQ[stopCurrentAgent], StopMMAAgentHiddenAgent[]];
   $ControlAgentEvaluatorName = evaluatorName;
   $ControlAgentNotebook = CreateDocument[{Cell[BoxData[initCode], "Input", CellTags -> {"MMAAgentControlInit"}]}, Visible -> False, WindowTitle -> "MMA Agent Control Kernel", Saveable -> False, Evaluator -> evaluatorName];

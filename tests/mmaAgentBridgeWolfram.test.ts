@@ -704,6 +704,70 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('NotebookPermissions[notebookId]');
   });
 
+  it("uses current global permissions as the notebook heartbeat fallback", () => {
+    const permissionsStart = source.indexOf("NotebookPermissions[notebookId_String]");
+    const permissionsEnd = source.indexOf("SetNotebookPermissions[notebookId_String", permissionsStart);
+    const permissionsBody = source.slice(permissionsStart, permissionsEnd);
+    const heartbeatStart = source.indexOf("NotebookHeartbeatPayload[nb_NotebookObject");
+    const heartbeatEnd = source.indexOf("AgentNotebookCandidateQ[nb_NotebookObject", heartbeatStart);
+    const heartbeatBody = source.slice(heartbeatStart, heartbeatEnd);
+
+    expect(source).toContain("CurrentBridgePermissions[] :=");
+    expect(permissionsStart).toBeGreaterThanOrEqual(0);
+    expect(permissionsEnd).toBeGreaterThan(permissionsStart);
+    expect(permissionsBody).toContain("CurrentBridgePermissions[]");
+    expect(permissionsBody).not.toContain("$DefaultBridgePermissions");
+    expect(heartbeatStart).toBeGreaterThanOrEqual(0);
+    expect(heartbeatEnd).toBeGreaterThan(heartbeatStart);
+    expect(heartbeatBody).toContain("CurrentBridgePermissions[]");
+    expect(heartbeatBody).not.toContain("$DefaultBridgePermissions");
+  });
+
+  it("serializes global and notebook-scoped permissions into control-kernel snapshots", () => {
+    const snapshotStart = source.indexOf("PermissionSnapshot[] :=");
+    const restoreStart = source.indexOf("RestorePermissionSnapshot[snapshot_Association]", snapshotStart);
+    const rowStart = source.indexOf("PalettePermissionRow[label_String", restoreStart);
+    const initCodeStart = source.indexOf("ControlAgentInitCode[permissionSnapshot_Association]");
+    const initCodeEnd = source.indexOf("StartMMAAgentControlKernel[evaluatorName_String", initCodeStart);
+    const controlKernelStart = source.indexOf("StartMMAAgentControlKernel[evaluatorName_String");
+    const controlKernelEnd = source.indexOf("StartMMAAgentHiddenAgent[] := Module", controlKernelStart);
+
+    expect(snapshotStart).toBeGreaterThanOrEqual(0);
+    expect(restoreStart).toBeGreaterThan(snapshotStart);
+    expect(rowStart).toBeGreaterThan(restoreStart);
+    expect(source.slice(snapshotStart, restoreStart)).toContain('"global" -> CurrentBridgePermissions[]');
+    expect(source.slice(snapshotStart, restoreStart)).toContain('"notebooks" -> $BridgeNotebookPermissions');
+    expect(source.slice(restoreStart, rowStart)).toContain('$BridgePermissions = Join[$DefaultBridgePermissions, Lookup[snapshot, "global", <||>]]');
+    expect(source.slice(restoreStart, rowStart)).toContain('$BridgeNotebookPermissions = Lookup[snapshot, "notebooks", <||>]');
+    expect(initCodeStart).toBeGreaterThanOrEqual(0);
+    expect(initCodeEnd).toBeGreaterThan(initCodeStart);
+    expect(source.slice(initCodeStart, initCodeEnd)).toContain("RestorePermissionSnapshot[");
+    expect(controlKernelStart).toBeGreaterThanOrEqual(0);
+    expect(controlKernelEnd).toBeGreaterThan(controlKernelStart);
+    expect(source.slice(controlKernelStart, controlKernelEnd)).toContain("permissionSnapshot = PermissionSnapshot[];");
+    expect(source.slice(controlKernelStart, controlKernelEnd)).toContain("initCode = ControlAgentInitCode[permissionSnapshot];");
+  });
+
+  it("requires explicit create and open permissions before creating or opening notebooks", () => {
+    const createStart = source.indexOf("CreateNotebookRequest[args_Association]");
+    const openStart = source.indexOf("OpenNotebookRequest[args_Association]", createStart);
+    const saveStart = source.indexOf("SaveNotebookRequest[args_Association]", openStart);
+    const createBody = source.slice(createStart, openStart);
+    const openBody = source.slice(openStart, saveStart);
+    const createConfirmIndex = createBody.indexOf('ConfirmAction["CreateNotebook"');
+    const createDocumentIndex = createBody.indexOf("CreateDocument[");
+    const openConfirmIndex = openBody.indexOf('ConfirmAction["OpenNotebook"');
+    const notebookOpenIndex = openBody.indexOf("NotebookOpen[");
+
+    expect(createStart).toBeGreaterThanOrEqual(0);
+    expect(openStart).toBeGreaterThan(createStart);
+    expect(saveStart).toBeGreaterThan(openStart);
+    expect(createConfirmIndex).toBeGreaterThanOrEqual(0);
+    expect(createDocumentIndex).toBeGreaterThan(createConfirmIndex);
+    expect(openConfirmIndex).toBeGreaterThanOrEqual(0);
+    expect(notebookOpenIndex).toBeGreaterThan(openConfirmIndex);
+  });
+
   it("includes a textual paclet palette launcher notebook", () => {
     const launcher = readFileSync(launcherPath, "utf8");
 
@@ -883,9 +947,9 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('$ControlAgentEvaluatorName = "MMAAgentControl"');
     expect(source).toContain('EnsureControlEvaluator[evaluatorName_String] := Module');
     expect(source).toContain('CurrentValue[$FrontEnd, {EvaluatorNames, evaluatorName}] = controlSpec');
-    expect(source).toContain('ControlAgentInitCode[permissions_Association] := Module');
+    expect(source).toContain('ControlAgentInitCode[permissionSnapshot_Association] := Module');
     expect(source).toContain('Get[ToString[');
-    expect(source).toContain('MMAAgentBridge`Private`$BridgePermissions = ');
+    expect(source).toContain('MMAAgentBridge`Private`RestorePermissionSnapshot[');
     expect(source).toContain('MMAAgentBridge`StartMMAAgentHiddenAgent[]');
     expect(source).toContain('CreateDocument[{Cell[BoxData[initCode], "Input", CellTags -> {"MMAAgentControlInit"}]}');
     expect(source).toContain('Visible -> False');
@@ -920,7 +984,7 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
 
     // Ordering: guard must appear before beforeAssoc in EnsureControlEvaluator
     const ensureStart = source.indexOf('EnsureControlEvaluator[evaluatorName_String] := Module');
-    const ensureEnd = source.indexOf('ControlAgentInitCode[permissions_Association] := Module', ensureStart);
+    const ensureEnd = source.indexOf('ControlAgentInitCode[permissionSnapshot_Association] := Module', ensureStart);
     const ensureBody = source.slice(ensureStart, ensureEnd);
     const guardIndex = ensureBody.indexOf('before = Quiet @ Check[CurrentValue[$FrontEnd, EvaluatorNames], $Failed];');
     const failedCheckIndex = ensureBody.indexOf('If[before === $Failed, Return[BridgeFailure["EVALUATOR_CONFIG_FAILED"');
@@ -946,7 +1010,7 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('$FrontEndSession');
 
     // ControlAgentInitCode generated string clears ControlKernelBooting before Get/Needs
-    const initCodeStart = source.indexOf('ControlAgentInitCode[permissions_Association] := Module');
+    const initCodeStart = source.indexOf('ControlAgentInitCode[permissionSnapshot_Association] := Module');
     const initCodeEnd = source.indexOf('StartMMAAgentControlKernel[evaluatorName_String', initCodeStart);
     const initCodeBody = source.slice(initCodeStart, initCodeEnd);
     expect(initCodeStart).toBeGreaterThanOrEqual(0);
@@ -973,7 +1037,7 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     // Failure paths clear ControlKernelBooting before returning
     // EnsureControlEvaluator failure path
     const ensureStart = source.indexOf('EnsureControlEvaluator[evaluatorName_String] := Module');
-    const ensureEnd = source.indexOf('ControlAgentInitCode[permissions_Association] := Module', ensureStart);
+    const ensureEnd = source.indexOf('ControlAgentInitCode[permissionSnapshot_Association] := Module', ensureStart);
     const ensureBody = source.slice(ensureStart, ensureEnd);
     // The evaluator failure check in StartMMAAgentControlKernel should clear the flag
     const evaluatorFailCheck = controlKernelBody.indexOf('MatchQ[evaluatorStatus, _Failure]');
