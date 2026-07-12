@@ -150,7 +150,6 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('KillKernelRequest[args_Association]');
     expect(source).toContain('RestartKernelRequest[args_Association]');
     expect(source).toContain('NotebookEvaluate[notebook, "Quit[]", InsertResults -> False]');
-    expect(source).toContain('NotebookEvaluate[notebook, "Null", InsertResults -> False]');
     expect(source).toContain('"PROTECTED_EVALUATOR"');
     expect(source).toContain('KeyDropFrom[$BridgeNotebookPermissions, notebookId]');
     expect(source).toContain('"mma_create_notebook", CreateNotebookRequest[args]');
@@ -172,17 +171,34 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(evaluatorAbortIndex).toBeGreaterThan(abortStatusIndex);
   });
 
-  it("restarts kernels by quitting before forcing a fresh evaluation", () => {
+  it("restarts only a distinct notebook kernel and verifies its identity changed", () => {
     const restartStart = source.indexOf("RestartKernelRequest[args_Association]");
     const restartEnd = source.indexOf("CreateNotebookRequest[args_Association]", restartStart);
     const restartBody = source.slice(restartStart, restartEnd);
+    const targetIdentityIndex = restartBody.indexOf("targetIdentity = NotebookKernelIdentity[notebook]");
+    const controlIdentityIndex = restartBody.indexOf("controlIdentity = KernelIdentityString[]");
+    const sameKernelGuardIndex = restartBody.indexOf("If[targetIdentity === controlIdentity");
     const quitIndex = restartBody.indexOf('NotebookEvaluate[notebook, "Quit[]", InsertResults -> False]');
-    const nullIndex = restartBody.indexOf('NotebookEvaluate[notebook, "Null", InsertResults -> False]');
+    const deadlineIndex = restartBody.indexOf("restartDeadline = AbsoluteTime[] + 10");
+    const retryIndex = restartBody.indexOf("While[AbsoluteTime[] < restartDeadline");
+    const changedIdentityCheckIndex = restartBody.indexOf("restartedIdentity === targetIdentity");
+    const clearStateIndex = restartBody.indexOf("ClearRunningEvaluationState[]");
 
     expect(restartStart).toBeGreaterThanOrEqual(0);
     expect(restartEnd).toBeGreaterThan(restartStart);
+    expect(source).toContain("KernelIdentityString[] := ToString[$SessionID] <> \":\" <> ToString[$ProcessID]");
+    expect(source).toContain("NotebookKernelIdentity[notebook_NotebookObject] :=");
+    expect(source).toContain('NotebookEvaluate[notebook, "ToString[$SessionID] <> \\":\\" <> ToString[$ProcessID]", InsertResults -> False]');
+    expect(targetIdentityIndex).toBeGreaterThanOrEqual(0);
+    expect(controlIdentityIndex).toBeGreaterThan(targetIdentityIndex);
+    expect(sameKernelGuardIndex).toBeGreaterThan(controlIdentityIndex);
+    expect(quitIndex).toBeGreaterThan(sameKernelGuardIndex);
+    expect(deadlineIndex).toBeGreaterThan(quitIndex);
+    expect(retryIndex).toBeGreaterThan(deadlineIndex);
+    expect(changedIdentityCheckIndex).toBeGreaterThan(retryIndex);
+    expect(clearStateIndex).toBeGreaterThan(changedIdentityCheckIndex);
+    expect(restartBody).toContain('BridgeFailure["KERNEL_RESTART_FAILED", "The notebook kernel did not restart before the deadline."]');
     expect(quitIndex).toBeGreaterThanOrEqual(0);
-    expect(nullIndex).toBeGreaterThan(quitIndex);
     expect(restartBody).not.toContain('FrontEndTokenExecute[notebook, "EvaluatorQuit"]');
   });
 

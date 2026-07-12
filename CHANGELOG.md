@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.5-rc.0 - 2026-07-12
+
+> 1.2.4 was published only under the npm `rc` tag and is superseded by this release candidate after its restart path failed real-notebook validation.
+
+- Fix `mma_restart_kernel` to restart target notebook kernels with `Quit[]` only, removing the `EvaluatorQuit` fallback path.
+- Reject restart requests for notebooks sharing the MICA control kernel to prevent accidental control-kernel termination.
+- Require observing a changed kernel identity after restart to confirm success.
+
 ## 1.2.3 - 2026-07-03
 
 - Fix Wolfram permission fallback so notebook heartbeats inherit current global permissions instead of reverting `RunCell` and other controls to defaults.

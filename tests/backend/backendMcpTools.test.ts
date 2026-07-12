@@ -1244,6 +1244,59 @@ expect(registrations.map((entry) => entry.name)).toEqual([
     }
   });
 
+  it("serializes mma_restart_kernel requests per notebook under concurrent load", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state);
+    const handler = registrationByName(registerTools(state), "mma_restart_kernel").handler;
+
+    // Fire 100 concurrent restart requests for the same notebook
+    const promises: Promise<unknown>[] = [];
+    for (let i = 0; i < 100; i++) {
+      promises.push(handler({ notebookId: notebook.notebookId }));
+    }
+
+    // All 100 should be queued
+    const initialSnapshot = state.queue.snapshot();
+    expect(initialSnapshot.queued).toHaveLength(100);
+
+    // Verify every queued request has correct metadata
+    for (const request of initialSnapshot.queued) {
+      expect(request).toMatchObject({
+        tool: "mma_restart_kernel",
+        targetNotebookId: notebook.notebookId,
+        agentSessionId: "agent-1",
+        timeoutMs: 60_000,
+        status: "queued",
+      });
+    }
+
+    // Claim and resolve one at a time — only one should be claimable per notebook
+    for (let i = 0; i < 100; i++) {
+      const claimed = state.queue.claimNext("agent-1", Date.now());
+      if (!claimed) throw new Error(`expected claimable request at iteration ${i}`);
+      expect(claimed).toMatchObject({
+        tool: "mma_restart_kernel",
+        targetNotebookId: notebook.notebookId,
+        agentSessionId: "agent-1",
+        status: "running",
+      });
+
+      // Verify no other request for this notebook is claimable while one is running
+      const secondClaim = state.queue.claimNext("agent-1", Date.now());
+      expect(secondClaim).toBeUndefined();
+
+      state.queue.resolve(claimed.requestId, { tool: "mma_restart_kernel" }, Date.now() + 1);
+    }
+
+    // All 100 handler promises must resolve
+    await expect(Promise.all(promises)).resolves.toHaveLength(100);
+
+    // Final snapshot: all succeeded, none queued
+    const finalSnapshot = state.queue.snapshot();
+    expect(finalSnapshot.succeeded).toHaveLength(100);
+    expect(finalSnapshot.queued).toHaveLength(0);
+  });
+
   describe("Phase 8.1 degraded tool operations", () => {
     it("includes degraded agents and notebooks in status and list at 10s gap", async () => {
       vi.spyOn(Date, "now").mockReturnValue(11_000);

@@ -654,6 +654,13 @@ FailedRequestCode[failure_Failure] := Module[{code = failure[[1]]},
   If[StringQ[code] && StringLength[code] > 0, code, "WOLFRAM_ERROR"]
 ];
 
+KernelIdentityString[] := ToString[$SessionID] <> ":" <> ToString[$ProcessID];
+
+NotebookKernelIdentity[notebook_NotebookObject] := Quiet @ Check[
+  NotebookEvaluate[notebook, "ToString[$SessionID] <> \":\" <> ToString[$ProcessID]", InsertResults -> False],
+  $Failed
+];
+
 FailedRequestMessage[failure_Failure] := Lookup[failure[[2]], "Message", Lookup[failure[[2]], "message", "The Wolfram bridge rejected the request."]];
 
 RequireReadPermission[notebookId_:None] := If[
@@ -1473,7 +1480,7 @@ KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, eva
   <|"status" -> "killed", "notebookId" -> notebookId|>
 ];
 
-RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
+RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, targetIdentity, controlIdentity, restartedIdentity, restartDeadline, wasRunning},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1484,9 +1491,24 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
   ];
+  targetIdentity = NotebookKernelIdentity[notebook];
+  If[!StringQ[targetIdentity], Return[BridgeFailure["KERNEL_RESTART_FAILED", "The target notebook kernel did not accept an identity probe."]]];
+  controlIdentity = KernelIdentityString[];
+  If[targetIdentity === controlIdentity,
+    Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart a notebook sharing the MICA control kernel."|>]]
+  ];
+  wasRunning = StringQ[$RunningCellId] && ($RunningNotebookId === notebookId || $RunningNotebookObject === notebook);
   Quiet @ Check[NotebookEvaluate[notebook, "Quit[]", InsertResults -> False], Null];
-  Pause[0.5];
-  Quiet @ Check[NotebookEvaluate[notebook, "Null", InsertResults -> False], Null];
+  restartDeadline = AbsoluteTime[] + 10;
+  restartedIdentity = targetIdentity;
+  While[AbsoluteTime[] < restartDeadline && (!StringQ[restartedIdentity] || restartedIdentity === targetIdentity),
+    Pause[0.1];
+    restartedIdentity = NotebookKernelIdentity[notebook]
+  ];
+  If[!StringQ[restartedIdentity] || restartedIdentity === targetIdentity,
+    Return[BridgeFailure["KERNEL_RESTART_FAILED", "The notebook kernel did not restart before the deadline."]]
+  ];
+  If[wasRunning, ClearRunningEvaluationState[]];
   <|"status" -> "restarted", "notebookId" -> notebookId|>
 ];
 
