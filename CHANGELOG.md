@@ -1,12 +1,13 @@
 # Changelog
 
-## 1.2.5-rc.0 - 2026-07-12
+## 1.2.5 - 2026-07-23
 
-> 1.2.4 was published only under the npm `rc` tag and is superseded by this release candidate after its restart path failed real-notebook validation.
+> 1.2.4 was published only under the npm `rc` tag and is superseded by this validated release.
 
-- Fix `mma_restart_kernel` to restart target notebook kernels with `Quit[]` only, removing the `EvaluatorQuit` fallback path.
-- Reject restart requests for notebooks sharing the MICA control kernel to prevent accidental control-kernel termination.
-- Require observing a changed kernel identity after restart to confirm success.
+- Make `mma_abort_evaluation` report `aborted` after the final `$Aborted` output is observed.
+- Fix `mma_kill_kernel` and `mma_restart_kernel` for kernels blocked in non-interruptible native work by caching the target kernel identity before evaluation and using a guarded process-level fallback when graceful `Quit[]` cannot run.
+- Verify the cached process is a Wolfram kernel, protect the MICA control kernel, and confirm termination before reporting success.
+- Require a changed kernel identity after restart and preserve `aborted` status for interrupted cells.
 
 ## 1.2.3 - 2026-07-03
 

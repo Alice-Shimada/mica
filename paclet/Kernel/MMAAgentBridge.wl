@@ -656,9 +656,126 @@ FailedRequestCode[failure_Failure] := Module[{code = failure[[1]]},
 
 KernelIdentityString[] := ToString[$SessionID] <> ":" <> ToString[$ProcessID];
 
-NotebookKernelIdentity[notebook_NotebookObject] := Quiet @ Check[
-  NotebookEvaluate[notebook, "ToString[$SessionID] <> \":\" <> ToString[$ProcessID]", InsertResults -> False],
-  $Failed
+RunTemporaryNotebookCell[notebook_NotebookObject, code_String, tag_String] := Module[{writeResult, cell},
+  SelectionMove[notebook, After, Notebook];
+  writeResult = Quiet @ Check[
+    NotebookWrite[notebook, Cell[BoxData[code], "Input", CellOpen -> False, CellTags -> {tag}], None],
+    $Failed
+  ];
+  If[writeResult === $Failed,
+    Return[BridgeFailure["KERNEL_CONTROL_FAILED", "The FrontEnd failed to insert a temporary kernel-control cell."]]
+  ];
+  cell = SelectFirst[Cells[notebook, CellTags -> tag], Head[#] === CellObject &, Missing["NotFound"]];
+  If[MissingQ[cell],
+    Return[BridgeFailure["KERNEL_CONTROL_FAILED", "The FrontEnd did not return the temporary kernel-control cell."]]
+  ];
+  SelectionMove[cell, All, Cell];
+  If[Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluateCells"], $Failed] === $Failed,
+    Quiet @ Check[NotebookDelete[cell], Null];
+    Return[BridgeFailure["KERNEL_CONTROL_FAILED", "The FrontEnd failed to evaluate the temporary kernel-control cell."]]
+  ];
+  cell
+];
+
+DeleteTemporaryNotebookCell[cell_] := If[
+  Head[cell] === CellObject,
+  Quiet @ Check[NotebookDelete[cell], Null]
+];
+
+NotebookKernelIdentity[notebook_NotebookObject] := Module[{probeId, probePath, code, cell, deadline, identity},
+  probeId = CreateUUID["kernel-probe-"];
+  probePath = {TaggingRules, "MMAAgentBridge", "kernelProbes", probeId};
+  Quiet @ Check[CurrentValue[notebook, probePath] = Inherited, Null];
+  code = "CurrentValue[EvaluationNotebook[], " <> ToString[probePath, InputForm] <> "] = ToString[$SessionID] <> \":\" <> ToString[$ProcessID];";
+  cell = RunTemporaryNotebookCell[notebook, code, probeId];
+  If[MatchQ[cell, _Failure],
+    Quiet @ Check[CurrentValue[notebook, probePath] = Inherited, Null];
+    Return[$Failed]
+  ];
+  deadline = AbsoluteTime[] + 10;
+  identity = Quiet @ Check[CurrentValue[notebook, probePath], $Failed];
+  While[AbsoluteTime[] < deadline && !StringQ[identity],
+    Pause[0.1];
+    identity = Quiet @ Check[CurrentValue[notebook, probePath], $Failed]
+  ];
+  DeleteTemporaryNotebookCell[cell];
+  Quiet @ Check[CurrentValue[notebook, probePath] = Inherited, Null];
+  If[StringQ[identity], identity, $Failed]
+];
+
+QuitNotebookKernel[notebook_NotebookObject] := Module[{quitId, quitPath, code, cell, deadline, quitIssued},
+  quitId = CreateUUID["kernel-quit-"];
+  quitPath = {TaggingRules, "MMAAgentBridge", "kernelQuits", quitId};
+  Quiet @ Check[CurrentValue[notebook, quitPath] = Inherited, Null];
+  code = "CurrentValue[EvaluationNotebook[], " <> ToString[quitPath, InputForm] <> "] = True; Quit[]";
+  cell = RunTemporaryNotebookCell[notebook, code, quitId];
+  If[MatchQ[cell, _Failure],
+    Quiet @ Check[CurrentValue[notebook, quitPath] = Inherited, Null];
+    Return[cell]
+  ];
+  deadline = AbsoluteTime[] + 3;
+  quitIssued = Quiet @ Check[CurrentValue[notebook, quitPath], False];
+  While[AbsoluteTime[] < deadline && !TrueQ[quitIssued],
+    Pause[0.1];
+    quitIssued = Quiet @ Check[CurrentValue[notebook, quitPath], False]
+  ];
+  Pause[0.5];
+  DeleteTemporaryNotebookCell[cell];
+  Quiet @ Check[CurrentValue[notebook, quitPath] = Inherited, Null];
+  If[
+    TrueQ[quitIssued],
+    True,
+    BridgeFailure["KERNEL_QUIT_FAILED", "The target notebook kernel did not execute Quit[] before the deadline."]
+  ]
+];
+
+KernelProcessId[identity_String] := Module[{parts = StringSplit[identity, ":"]},
+  If[
+    Length[parts] === 2 && StringMatchQ[Last[parts], DigitCharacter ..],
+    FromDigits[Last[parts]],
+    $Failed
+  ]
+];
+
+NotebookKernelProcessRunningQ[targetIdentity_String] := Module[{processId, program},
+  processId = KernelProcessId[targetIdentity];
+  If[!IntegerQ[processId] || processId <= 0, Return[False]];
+  program = Quiet @ Check[ProcessObject[processId]["Program"], $Failed];
+  StringQ[program] && StringStartsQ[ToLowerCase[FileNameTake[program]], "wolframkernel"]
+];
+
+ForceKillNotebookKernelProcess[targetIdentity_String] := Module[
+  {processId, process, killResult, deadline, currentProgram},
+  processId = KernelProcessId[targetIdentity];
+  If[
+    !IntegerQ[processId] || processId <= 0,
+    Return[BridgeFailure["KERNEL_FORCE_KILL_FAILED", "The cached kernel identity did not contain a valid process id."]]
+  ];
+  If[
+    processId === $ProcessID,
+    Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill the MICA control agent process."|>]]
+  ];
+  If[
+    !NotebookKernelProcessRunningQ[targetIdentity],
+    Return[BridgeFailure["KERNEL_FORCE_KILL_FAILED", "The cached process is not a Wolfram kernel."]]
+  ];
+  process = ProcessObject[processId];
+  killResult = Quiet @ Check[KillProcess[process], $Failed];
+  If[
+    killResult === $Failed,
+    Return[BridgeFailure["KERNEL_FORCE_KILL_FAILED", "The operating system rejected the kernel termination request."]]
+  ];
+  deadline = AbsoluteTime[] + 5;
+  currentProgram = Quiet @ Check[ProcessObject[processId]["Program"], $Failed];
+  While[AbsoluteTime[] < deadline && StringQ[currentProgram],
+    Pause[0.1];
+    currentProgram = Quiet @ Check[ProcessObject[processId]["Program"], $Failed]
+  ];
+  If[
+    StringQ[currentProgram],
+    BridgeFailure["KERNEL_FORCE_KILL_FAILED", "The target Wolfram kernel process is still running."],
+    True
+  ]
 ];
 
 FailedRequestMessage[failure_Failure] := Lookup[failure[[2]], "Message", Lookup[failure[[2]], "message", "The Wolfram bridge rejected the request."]];
@@ -1146,10 +1263,10 @@ CellArtifactScan[cell_CellObject, cellId_String:"", notebook_:Automatic] := Modu
       "finished",
     StringQ[cellId] && StringQ[$LastRunStatusCellId] && cellId === $LastRunStatusCellId && StringQ[$LastRunStatusNotebookId] && NotebookIdForObject[nb] === $LastRunStatusNotebookId && $LastRunStatus === "aborted",
       "aborted",
-    sameRunningCellQ && NumberQ[$AbortRequestedAt] && !evaluationCompleteQ,
-      "abort_requested",
-    sameRunningCellQ && NumberQ[$AbortRequestedAt] && evaluationCompleteQ,
+    sameRunningCellQ && NumberQ[$AbortRequestedAt] && (evaluationCompleteQ || hasFinalOutputQ),
       (FinishRunningCell["aborted"]; "aborted"),
+    sameRunningCellQ && NumberQ[$AbortRequestedAt],
+      "abort_requested",
     sameRunningCellQ && NumberQ[$RunningStartedAt] && (AbsoluteTime[] - $RunningStartedAt < $RunningStatusGraceSeconds),
       "running",
     sameRunningCellQ && (evaluationCompleteQ || hasFinalOutputQ),
@@ -1401,7 +1518,7 @@ DeleteCellRequest[args_Association] := Module[{notebookId, record, notebook, cel
   <|"status" -> "deleted", "cellId" -> cellId, "deletedArtifactCount" -> Length[artifacts]|>
 ];
 
-RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, timeoutSec = Lookup[args, "timeoutSec", Infinity], installedEpilog, evaluateResult},
+RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId, cell, timeoutSec = Lookup[args, "timeoutSec", Infinity], kernelIdentity, installedEpilog, evaluateResult},
   notebookId = TargetNotebookId[args];
   If[Not @ ConfirmAction["RunCell", "AI requests running 1 cell. Allow?", notebookId], Return[$Canceled]];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
@@ -1413,6 +1530,9 @@ RunCellRequest[args_Association] := Module[{notebookId, record, notebook, cellId
   If[!StringQ[cellId] || StringLength[cellId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "cellId is required."|>]]];
   cell = Lookup[Lookup[record, "cellMap", <||>], cellId, Missing["NotFound"]];
   If[MissingQ[cell], Return[Failure["BAD_REQUEST", <|"message" -> "Requested cell was not found."|>]]];
+  kernelIdentity = NotebookKernelIdentity[notebook];
+  If[!StringQ[kernelIdentity], Return[BridgeFailure["RUN_FAILED", "The notebook kernel did not accept an identity probe."]]];
+  record = Join[record, <|"kernelIdentity" -> kernelIdentity|>];
   ClearCellEvaluationComplete[notebook, cellId];
   installedEpilog = InstallRunningCellEpilog[cell, cellId];
   If[MatchQ[installedEpilog, _Failure], Return[installedEpilog]];
@@ -1465,7 +1585,7 @@ AbortEvaluationRequest[args_Association] := Module[{notebookId, record, notebook
   ]
 ];
 
-KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName},
+KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, cachedIdentity, targetIdentity, controlIdentity, quitResult, wasRunning},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1476,11 +1596,24 @@ KillKernelRequest[args_Association] := Module[{notebookId, record, notebook, eva
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill the MICA control agent evaluator."|>]]
   ];
-  Quiet @ Check[NotebookEvaluate[notebook, "Quit[]", InsertResults -> False], Null];
+  wasRunning = StringQ[$RunningCellId] && ($RunningNotebookId === notebookId || $RunningNotebookObject === notebook);
+  cachedIdentity = Lookup[record, "kernelIdentity", Missing["NotAvailable"]];
+  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluatorAbort"], Null];
+  targetIdentity = If[wasRunning && StringQ[cachedIdentity], cachedIdentity, NotebookKernelIdentity[notebook]];
+  If[!StringQ[targetIdentity], Return[BridgeFailure["KERNEL_KILL_FAILED", "The target notebook kernel did not accept an identity probe."]]];
+  controlIdentity = KernelIdentityString[];
+  If[targetIdentity === controlIdentity,
+    Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot kill a notebook sharing the MICA control kernel."|>]]
+  ];
+  quitResult = QuitNotebookKernel[notebook];
+  If[MatchQ[quitResult, _Failure], quitResult = ForceKillNotebookKernelProcess[targetIdentity]];
+  If[TrueQ[quitResult] && NotebookKernelProcessRunningQ[targetIdentity], quitResult = ForceKillNotebookKernelProcess[targetIdentity]];
+  If[MatchQ[quitResult, _Failure], Return[quitResult]];
+  If[wasRunning, FinishRunningCell["aborted"]];
   <|"status" -> "killed", "notebookId" -> notebookId|>
 ];
 
-RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, targetIdentity, controlIdentity, restartedIdentity, restartDeadline, wasRunning},
+RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, evaluatorName, cachedIdentity, targetIdentity, controlIdentity, quitResult, restartedIdentity, wasRunning},
   notebookId = TargetNotebookId[args];
   If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
   record = NotebookRecord[notebookId];
@@ -1491,24 +1624,25 @@ RestartKernelRequest[args_Association] := Module[{notebookId, record, notebook, 
   If[evaluatorName === $ControlAgentEvaluatorName,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart the MICA control agent evaluator."|>]]
   ];
-  targetIdentity = NotebookKernelIdentity[notebook];
+  wasRunning = StringQ[$RunningCellId] && ($RunningNotebookId === notebookId || $RunningNotebookObject === notebook);
+  cachedIdentity = Lookup[record, "kernelIdentity", Missing["NotAvailable"]];
+  Quiet @ Check[FrontEndTokenExecute[notebook, "EvaluatorAbort"], Null];
+  targetIdentity = If[wasRunning && StringQ[cachedIdentity], cachedIdentity, NotebookKernelIdentity[notebook]];
   If[!StringQ[targetIdentity], Return[BridgeFailure["KERNEL_RESTART_FAILED", "The target notebook kernel did not accept an identity probe."]]];
   controlIdentity = KernelIdentityString[];
   If[targetIdentity === controlIdentity,
     Return[Failure["PROTECTED_EVALUATOR", <|"message" -> "Cannot restart a notebook sharing the MICA control kernel."|>]]
   ];
-  wasRunning = StringQ[$RunningCellId] && ($RunningNotebookId === notebookId || $RunningNotebookObject === notebook);
-  Quiet @ Check[NotebookEvaluate[notebook, "Quit[]", InsertResults -> False], Null];
-  restartDeadline = AbsoluteTime[] + 10;
-  restartedIdentity = targetIdentity;
-  While[AbsoluteTime[] < restartDeadline && (!StringQ[restartedIdentity] || restartedIdentity === targetIdentity),
-    Pause[0.1];
-    restartedIdentity = NotebookKernelIdentity[notebook]
-  ];
+  quitResult = QuitNotebookKernel[notebook];
+  If[MatchQ[quitResult, _Failure], quitResult = ForceKillNotebookKernelProcess[targetIdentity]];
+  If[TrueQ[quitResult] && NotebookKernelProcessRunningQ[targetIdentity], quitResult = ForceKillNotebookKernelProcess[targetIdentity]];
+  If[MatchQ[quitResult, _Failure], Return[quitResult]];
+  restartedIdentity = NotebookKernelIdentity[notebook];
   If[!StringQ[restartedIdentity] || restartedIdentity === targetIdentity,
     Return[BridgeFailure["KERNEL_RESTART_FAILED", "The notebook kernel did not restart before the deadline."]]
   ];
-  If[wasRunning, ClearRunningEvaluationState[]];
+  $BridgeNotebooks[notebookId] = Join[record, <|"kernelIdentity" -> restartedIdentity|>];
+  If[wasRunning, FinishRunningCell["aborted"]];
   <|"status" -> "restarted", "notebookId" -> notebookId|>
 ];
 
