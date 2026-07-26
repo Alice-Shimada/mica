@@ -23,6 +23,19 @@ const TOOL_GUIDE = [
   ["mma_save_notebook", "Save the selected notebook when SaveNotebook permission is granted."],
 ] as const;
 
+export const WOLFRAM_LANGUAGE_AGENT_GUIDANCE = [
+  "Wolfram Language authoring rules:",
+  "1. Inspect nearby cells and existing definitions before editing. Preserve the notebook or package's established API, naming, and evaluation conventions.",
+  "2. Naming is context-sensitive: System symbols use descriptive UpperCamelCase, while ordinary scratch symbols are typically lowercase. If a project deliberately mirrors Wolfram APIs, use descriptive UpperCamelCase for public functions; use lowerCamelCase or lowercase for local variables and pattern names. Do not capitalize every user symbol mechanically, shadow built-ins, or add a Q suffix unless the function always returns True or False.",
+  "3. Define functions with patterns and SetDelayed (:=) when the right-hand side should evaluate per call; use Set (=) only when immediate evaluation is intentional. For named optional arguments, prefer Options, OptionsPattern[], and OptionValue.",
+  "4. Localize temporary state: use Module for fresh local symbols, With for lexical constants, and Block only for intentional dynamic localization. Avoid leaking scratch definitions into Global`; use package contexts and private helpers for reusable package code.",
+  "5. Give each Input cell one coherent step. Prefer separate cells for setup, transformation, inspection or verification, and visualization. During debugging, teaching, or exploration, name and expose useful intermediate results instead of burying a multi-step computation in one CompoundExpression or oversized Module.",
+  "6. Use semicolons only when suppressing output is intentional. Keep useful diagnostic checkpoints visible, then inspect outputs and messages before continuing.",
+  "7. Make notebook workflows rerunnable: do not depend on % or fixed Out[n] history, avoid hidden session state, and make assumptions, initialization, and randomness explicit when relevant.",
+  "8. For reusable code, add usage messages and verify important behavior with VerificationTest or TestReport. Use Failure or named messages for expected bad inputs when appropriate.",
+  "9. Before guessing a Wolfram symbol's syntax, options, or attributes, call mma_symbol_lookup.",
+].join("\n");
+
 export const MICA_AGENT_INSTRUCTIONS = [
   "MICA controls already-open Mathematica / Wolfram Desktop notebooks through MCP.",
   "",
@@ -36,6 +49,8 @@ export const MICA_AGENT_INSTRUCTIONS = [
   "7. For appending cells, pass afterCellId=\"__end__\". Empty notebooks are supported.",
   "8. All tool results are structured. Success returns ok: true. Expected failures return ok: false with error.code, error.message, error.retryable, error.tool, and sometimes error.notebookId.",
   "9. Respect notebook permissions. SaveNotebook is commonly disabled; handle PERMISSION_DENIED instead of retrying blindly.",
+  "",
+  WOLFRAM_LANGUAGE_AGENT_GUIDANCE,
   "",
   "Tools:",
   ...TOOL_GUIDE.map(([name, description]) => `- ${name}: ${description}`),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MICA_AGENT_INSTRUCTIONS,
   MICA_TOOL_GUIDE_PROMPT_NAME,
+  WOLFRAM_LANGUAGE_AGENT_GUIDANCE,
   createMicaMcpServer,
   registerMicaPrompts,
 } from "../src/mcp/prompts.js";
@@ -86,6 +87,20 @@ describe("MICA MCP prompts", () => {
     const text = (prompt as { messages: Array<{ content: { text: string } }> }).messages[0]!.content.text;
 
     expect(text).toContain("For all mutating operations, pass notebookId explicitly");
+  });
+
+  it("includes context-sensitive Wolfram Language and notebook authoring guidance", () => {
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("System symbols use descriptive UpperCamelCase");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("Do not capitalize every user symbol mechanically");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("SetDelayed (:=)");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("OptionsPattern[]");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("use Module for fresh local symbols");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("Give each Input cell one coherent step");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("name and expose useful intermediate results");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("do not depend on % or fixed Out[n]");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("VerificationTest or TestReport");
+    expect(WOLFRAM_LANGUAGE_AGENT_GUIDANCE).toContain("call mma_symbol_lookup");
+    expect(MICA_AGENT_INSTRUCTIONS).toContain(WOLFRAM_LANGUAGE_AGENT_GUIDANCE);
   });
 
   it("puts the same guide into MCP server initialization instructions", () => {

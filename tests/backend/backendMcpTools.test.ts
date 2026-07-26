@@ -238,12 +238,45 @@ expect(registrations.map((entry) => entry.name)).toEqual([
     });
   });
 
+  it("returns readable symbol lookup text while preserving structured data", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });
+    state.activeNotebookId = notebook.notebookId;
+    const registration = registrationByName(registerTools(state), "mma_symbol_lookup");
+
+    const pending = registration.handler({ query: "Plot" });
+    const queued = state.queue.snapshot().queued[0];
+    if (!queued) throw new Error("expected queued request");
+
+    state.queue.resolve(queued.requestId, {
+      status: "found",
+      symbol: "Plot",
+      usage: "Plot[f, {x, xmin, xmax}] generates a plot.",
+      options: [{ name: "PlotRange", default: "Automatic" }],
+      attributes: ["HoldAll", "Protected"],
+      url: "https://reference.wolfram.com/language/ref/Plot.html",
+    }, Date.now() + 1);
+
+    await expect(pending).resolves.toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining("## `Plot`") }],
+      structuredContent: expect.objectContaining({
+        ok: true,
+        status: "found",
+        symbol: "Plot",
+      }),
+    });
+  });
+
   it("surfaces notebook workflow guidance in backend MCP tool descriptions", () => {
     const registrations = registerTools(makeState());
     const descriptions = registrations.map((registration) => registration.description).join("\n");
 
     expect(registrationByName(registrations, "mma_status").description).toContain("Start by calling mma_status or mma_list_notebooks");
     expect(registrationByName(registrations, "mma_insert_cell").description).toContain('afterCellId="__end__"');
+    expect(registrationByName(registrations, "mma_insert_cell").description).toContain("use one coherent step per cell");
+    expect(registrationByName(registrations, "mma_insert_cell").description).toContain("keep useful intermediate results visible");
+    expect(registrationByName(registrations, "mma_modify_cell").description).toContain("use one coherent step per cell");
+    expect(registrationByName(registrations, "mma_modify_cell").description).toContain("use mma_symbol_lookup rather than guessing");
     expect(descriptions).toContain("Use the latest notebookId");
     expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
     expect(descriptions).toContain("Do not use detached wolframscript");

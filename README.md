@@ -183,6 +183,8 @@ MICA exposes usage guidance in two MCP-facing places:
 
 The prompt tells the agent to start with `mma_status` or `mma_list_notebooks`, use current `notebookId` values, avoid hidden/offscreen notebooks, use `mma_create_notebook` / `mma_open_notebook` only when the user explicitly wants a notebook created or opened, avoid detached `wolframscript` for live-notebook work, and handle structured `ok: true` / `ok: false` responses.
 
+It also includes Wolfram Language authoring guidance: context-sensitive naming instead of mechanically capitalizing every symbol, appropriate use of `SetDelayed`, `Module` / `With` / `Block`, standard option handling, rerunnable notebook state, and verification. Agents are explicitly asked to keep one coherent step per Input cell and expose useful intermediate results while debugging, teaching, or exploring. The shorter Cell-authoring reminder is repeated in the `mma_insert_cell` and `mma_modify_cell` tool descriptions so clients see it at the point of mutation.
+
 ## Tools
 
 | Tool | Purpose |

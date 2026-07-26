@@ -16,7 +16,12 @@ import {
   runCellSchema,
   symbolLookupSchema
 } from "./toolSchemas.js";
-import { INSERT_ANCHOR_GUIDANCE, notebookToolDescription } from "./descriptions.js";
+import {
+  INSERT_ANCHOR_GUIDANCE,
+  WOLFRAM_CELL_AUTHORING_GUIDANCE,
+  notebookToolDescription
+} from "./descriptions.js";
+import { symbolLookupToolSuccess } from "./symbolLookupResults.js";
 import { toolSuccess, withToolErrors } from "./toolResults.js";
 
 /**
@@ -103,7 +108,7 @@ async function enqueueRequestWithCancellation(
 
   try {
     const result = await promise;
-    return toolSuccess(result);
+    return tool === "mma_symbol_lookup" ? symbolLookupToolSuccess(result) : toolSuccess(result);
   } finally {
     extra?.signal?.removeEventListener("abort", onAbort);
   }
@@ -223,12 +228,13 @@ export function registerMmaTools(
       name: "mma_insert_cell",
       summary: "Insert a cell through the Mathematica FrontEnd bridge.",
       schema: insertCellSchema.shape,
-      extraGuidance: INSERT_ANCHOR_GUIDANCE,
+      extraGuidance: `${INSERT_ANCHOR_GUIDANCE} ${WOLFRAM_CELL_AUTHORING_GUIDANCE}`,
     },
     {
       name: "mma_modify_cell",
       summary: "Modify one existing cell through the Mathematica FrontEnd bridge.",
       schema: modifyCellSchema.shape,
+      extraGuidance: WOLFRAM_CELL_AUTHORING_GUIDANCE,
     },
     {
       name: "mma_delete_cell",

@@ -182,6 +182,51 @@ describe("MCP tool bridge readiness", () => {
     expect(queue.pendingCount()).toBe(0);
   });
 
+  it("formats legacy symbol lookup results for both models and clients", async () => {
+    const registrations: LegacyMmaToolRegistration[] = [];
+    const server = {
+      tool(
+        name: string,
+        description: string,
+        _schema: unknown,
+        handler: (args: Record<string, unknown>, extra?: { signal?: AbortSignal }) => Promise<unknown>
+      ) {
+        registrations.push({ name, description, handler });
+      }
+    };
+    const queue = new RequestQueue();
+    const getStatus = () =>
+      status({
+        activeNotebookId: "nb-1",
+        notebooks: [{ notebookId: "nb-1", lastSeenAt: 1 }]
+      });
+    registerMmaTools(server as never, queue, getStatus);
+
+    const lookupHandler = registrations.find((entry) => entry.name === "mma_symbol_lookup")!.handler;
+    const handlerPromise = lookupHandler({ query: "Plot" });
+    const claimed = queue.claimNext();
+    expect(claimed).toEqual(expect.objectContaining({ tool: "mma_symbol_lookup", notebookId: "nb-1" }));
+    expect(claimed).not.toBeNull();
+
+    expect(queue.resolveSuccess(claimed!.requestId, {
+      status: "found",
+      symbol: "Plot",
+      usage: "Plot[f, {x, xmin, xmax}] generates a plot.",
+      options: [],
+      attributes: ["HoldAll"],
+      url: "https://reference.wolfram.com/language/ref/Plot.html"
+    })).toBe(true);
+
+    await expect(handlerPromise).resolves.toMatchObject({
+      content: [{ type: "text", text: expect.stringContaining("## `Plot`") }],
+      structuredContent: expect.objectContaining({
+        ok: true,
+        status: "found",
+        symbol: "Plot"
+      })
+    });
+  });
+
   it("registers all notebook operation tools", () => {
     expect(registerLegacyMmaTools().map((registration) => registration.name)).toEqual([
       "mma_status",
@@ -245,10 +290,15 @@ describe("MCP tool bridge readiness", () => {
 
     const descriptions = registrations.map((registration) => registration.description).join("\n");
     const insertDescription = registrations.find((registration) => registration.name === "mma_insert_cell")?.description ?? "";
+    const modifyDescription = registrations.find((registration) => registration.name === "mma_modify_cell")?.description ?? "";
 
     expect(descriptions).toContain("Start by calling mma_status or mma_list_notebooks");
     expect(descriptions).toContain("Use the latest notebookId");
     expect(insertDescription).toContain('afterCellId="__end__"');
+    expect(insertDescription).toContain("use one coherent step per cell");
+    expect(insertDescription).toContain("keep useful intermediate results visible");
+    expect(modifyDescription).toContain("use one coherent step per cell");
+    expect(modifyDescription).toContain("use mma_symbol_lookup rather than guessing");
     expect(descriptions).toContain("Debug live notebooks only through MCP notebook cells");
     expect(descriptions).toContain("Do not use detached wolframscript");
     expect(descriptions).toContain("Restart your MCP client or the MICA MCP server");

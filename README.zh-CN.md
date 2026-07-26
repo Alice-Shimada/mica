@@ -183,6 +183,8 @@ MICA 在两个 MCP-facing 位置暴露使用指导：
 
 这个 prompt 会要求 Agent 从 `mma_status` 或 `mma_list_notebooks` 开始，使用当前的 `notebookId`，避免操作隐藏或离屏 Notebook；只有在用户明确要求创建或打开 Notebook 时才使用 `mma_create_notebook` / `mma_open_notebook`；避免用 detached `wolframscript` 调试 live Notebook，并处理结构化的 `ok: true` / `ok: false` 响应。
 
+它还包含 Wolfram Language 编写规范：按语境决定命名方式，而不是机械地把每个符号都改成大驼峰；正确使用 `SetDelayed`、`Module` / `With` / `Block`、标准 option 机制、可重复运行的 Notebook 状态和验证。Agent 会被明确要求让每个 Input cell 只承担一个连贯步骤，并在调试、教学或探索时暴露有用的中间结果。`mma_insert_cell` 和 `mma_modify_cell` 的 tool description 还会重复一份精简的 Cell 编写提醒，使客户端在真正修改 Notebook 时再次看到它。
+
 ## 工具
 
 | 工具 | 用途 |

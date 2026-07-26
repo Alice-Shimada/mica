@@ -22,7 +22,12 @@ import {
   saveNotebookSchema,
   symbolLookupSchema,
 } from "./toolSchemas.js";
-import { INSERT_ANCHOR_GUIDANCE, notebookToolDescription } from "./descriptions.js";
+import {
+  INSERT_ANCHOR_GUIDANCE,
+  WOLFRAM_CELL_AUTHORING_GUIDANCE,
+  notebookToolDescription,
+} from "./descriptions.js";
+import { symbolLookupToolSuccess } from "./symbolLookupResults.js";
 import { toolFailure, toolSuccess, withToolErrors, type StructuredToolResult } from "./toolResults.js";
 
 type ToolHandlerExtra = {
@@ -116,7 +121,7 @@ function queueNotebookOperation(
 
   return state.queue
     .waitForResult(requestId)
-    .then((result) => toolSuccess(result))
+    .then((result) => (tool === "mma_symbol_lookup" ? symbolLookupToolSuccess(result) : toolSuccess(result)))
     .finally(() => {
       clearTimeout(timeoutHandle);
       extra?.signal?.removeEventListener("abort", abortHandler);
@@ -167,7 +172,7 @@ const queuedNotebookTools: QueuedNotebookTool[] = [
     schema: insertCellSchema.shape,
     permission: "InsertCell",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.insertCell,
-    extraGuidance: INSERT_ANCHOR_GUIDANCE,
+    extraGuidance: `${INSERT_ANCHOR_GUIDANCE} ${WOLFRAM_CELL_AUTHORING_GUIDANCE}`,
     requiresExplicitTarget: true,
   },
   {
@@ -176,6 +181,7 @@ const queuedNotebookTools: QueuedNotebookTool[] = [
     schema: modifyCellSchema.shape,
     permission: "ModifyCell",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+    extraGuidance: WOLFRAM_CELL_AUTHORING_GUIDANCE,
     requiresExplicitTarget: true,
   },
   {

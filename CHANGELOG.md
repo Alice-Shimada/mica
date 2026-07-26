@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0 - 2026-07-26
+
+- Add built-in Wolfram Language authoring guidance to MCP initialization instructions and the reusable notebook workflow prompt, covering context-sensitive naming, delayed definitions, scoping, options, rerunnable state, verification, and symbol lookup before guessing.
+- Add concise Cell-authoring reminders to `mma_insert_cell` and `mma_modify_cell`, encouraging one coherent step per Input cell and visible intermediate results during debugging, teaching, and exploration.
+- Render `mma_symbol_lookup` text results as readable Markdown for exact, ambiguous, invalid, and missing-symbol responses while preserving the original machine-readable fields in `structuredContent`.
+- Apply the new symbol lookup result format consistently across backend, HTTP proxy, and legacy stdio MCP paths.
+
 ## 1.2.5 - 2026-07-23
 
 > 1.2.4 was published only under the npm `rc` tag and is superseded by this validated release.
