@@ -6,6 +6,7 @@ import {
   createMicaMcpServer,
   registerMicaPrompts,
 } from "../src/mcp/prompts.js";
+import { MICA_PACKAGE_VERSION } from "../src/runtime/packageVersion.js";
 
 type PromptRegistration = {
   name: string;
@@ -107,5 +108,6 @@ describe("MICA MCP prompts", () => {
     const server = createMicaMcpServer("mica-test");
 
     expect((server.server as unknown as { _instructions?: string })._instructions).toBe(MICA_AGENT_INSTRUCTIONS);
+    expect((server.server as unknown as { _serverInfo?: { version?: string } })._serverInfo?.version).toBe(MICA_PACKAGE_VERSION);
   });
 });

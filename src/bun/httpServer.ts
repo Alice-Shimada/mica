@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import type { BackendState } from "../backend/backendState.js";
 import type { AgentInfo, BackendRequest, BackendRequestStatus } from "../backend/protocol.js";
 import { executeBackendMcpTool } from "../mcp/backendTools.js";
+import { MICA_PACKAGE_VERSION } from "../runtime/packageVersion.js";
 import { renderDashboard } from "./dashboard.js";
 
 export type BunHttpApp = {
@@ -59,9 +60,8 @@ type McpCallBody = {
 };
 
 const JSON_BODY_LIMIT_BYTES = 1024 * 1024;
-const DEFAULT_VERSION = "1.2.3";
 
-export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken, version = DEFAULT_VERSION }: BunHttpAppOptions): Promise<BunHttpApp> {
+export async function createBunHttpApp({ state, host = "127.0.0.1", port, authToken, version = MICA_PACKAGE_VERSION }: BunHttpAppOptions): Promise<BunHttpApp> {
   const runtimeInfo: DashboardRuntimeInfo = {
     host,
     port,
@@ -95,7 +95,7 @@ export function createFetchHandler(state: BackendState, options: Partial<Dashboa
     host: options.host ?? "127.0.0.1",
     port: options.port ?? 19_791,
     authToken: options.authToken,
-    version: options.version ?? DEFAULT_VERSION,
+    version: options.version ?? MICA_PACKAGE_VERSION,
     startedAtMs: options.startedAtMs ?? Date.now(),
   };
 

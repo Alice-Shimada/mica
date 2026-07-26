@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { MICA_PACKAGE_VERSION } from "../src/runtime/packageVersion.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,8 +28,12 @@ describe("package.json metadata", () => {
     expect(pkg.name).toBe("@aliceshimada/mica");
   });
 
-  it("has version 1.3.0", () => {
-    expect(pkg.version).toBe("1.3.0");
+  it("has version 1.3.1", () => {
+    expect(pkg.version).toBe("1.3.1");
+  });
+
+  it("is the runtime version source", () => {
+    expect(MICA_PACKAGE_VERSION).toBe(pkg.version);
   });
 
   it("has repository pointing to Alice-Shimada/mica", () => {

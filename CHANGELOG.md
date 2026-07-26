@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 - 2026-07-26
+
+- Use the root `package.json` as the runtime version source instead of stale hard-coded `1.2.3` defaults.
+- Keep session files, HTTP `/status`, and MCP server initialization metadata synchronized with the installed MICA package version.
+- Propagate explicit runtime version overrides consistently and add regression coverage for every version-reporting path.
+
 ## 1.3.0 - 2026-07-26
 
 - Add built-in Wolfram Language authoring guidance to MCP initialization instructions and the reusable notebook workflow prompt, covering context-sensitive naming, delayed definitions, scoping, options, rerunnable state, verification, and symbol lookup before guessing.

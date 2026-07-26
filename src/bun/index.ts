@@ -7,16 +7,16 @@ import { registerBackendMcpTools } from "../mcp/backendTools.js";
 import { createMicaMcpServer, registerMicaPrompts } from "../mcp/prompts.js";
 import type { MicaRuntimeConfig } from "../runtime/config.js";
 import { loadRuntimeConfig } from "../runtime/config.js";
+import { MICA_PACKAGE_VERSION } from "../runtime/packageVersion.js";
 import { writeSessionFile } from "../runtime/session.js";
 import { createBunHttpApp } from "./httpServer.js";
 
 const MCP_SERVER_NAME = "mica-bun";
-const MICA_PACKAGE_VERSION = "1.2.3";
 
 export type BunRuntimeDeps = {
   bridgeOnly?: boolean;
   createHttpApp?: typeof createBunHttpApp;
-  createMcpServer?: () => Pick<McpServer, "connect" | "prompt" | "tool">;
+  createMcpServer?: (version: string) => Pick<McpServer, "connect" | "prompt" | "tool">;
   createTransport?: () => StdioServerTransport;
   installSignalHandlers?: (onSignal: (signal: NodeJS.Signals) => void) => () => void;
   runtimeConfig?: MicaRuntimeConfig;
@@ -37,10 +37,10 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
   const bridgeOnly = deps.bridgeOnly ?? config.bridgeOnly;
   const state = deps.state ?? new BackendState(() => `notebook-${randomUUID()}`);
   const createHttpApp = deps.createHttpApp ?? createBunHttpApp;
-  const createMcpServer = deps.createMcpServer ?? (() => createMicaMcpServer(MCP_SERVER_NAME));
+  const version = deps.version ?? MICA_PACKAGE_VERSION;
+  const createMcpServer = deps.createMcpServer ?? ((serverVersion) => createMicaMcpServer(MCP_SERVER_NAME, serverVersion));
   const createTransport = deps.createTransport ?? (() => new StdioServerTransport());
   const writeSession = deps.writeSessionFile ?? writeSessionFile;
-  const version = deps.version ?? MICA_PACKAGE_VERSION;
   const installSignalHandlers =
     deps.installSignalHandlers ??
     ((onSignal: (signal: NodeJS.Signals) => void) => {
@@ -81,7 +81,7 @@ export async function startBunRuntime(deps: BunRuntimeDeps = {}): Promise<BunRun
       version,
       status: "running",
     });
-    const server = createMcpServer();
+    const server = createMcpServer(version);
     registerBackendMcpTools(server as McpServer, state);
     registerMicaPrompts(server);
 

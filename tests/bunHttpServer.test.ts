@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BackendState } from "../src/backend/backendState.js";
 import { createBunHttpApp, createFetchHandler } from "../src/bun/httpServer.js";
+import { MICA_PACKAGE_VERSION } from "../src/runtime/packageVersion.js";
 
 const httpServerSource = readFileSync(new URL("../src/bun/httpServer.ts", import.meta.url), "utf8");
 
@@ -1277,6 +1278,7 @@ describe("Bun HTTP app", () => {
       expect(body.security).toBeDefined();
       expect(body.security.authEnabled).toBe(false);
       expect(body.security.dashboardTokenPresent).toBe(false);
+      expect(body.server.version).toBe(MICA_PACKAGE_VERSION);
     });
   });
 
