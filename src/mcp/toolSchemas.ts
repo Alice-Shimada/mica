@@ -61,7 +61,13 @@ export const createNotebookSchema = z.object({
 }).strict();
 
 export const openNotebookSchema = z.object({
-  path: z.string().min(1).describe("Absolute path to an existing .nb file")
+  path: z.string().min(1).describe("Absolute path to an existing .nb file"),
+  visible: z.boolean().optional().describe("Open hidden in the Wolfram FrontEnd without showing a window (default true; hidden opens require a live agent)")
+}).strict();
+
+export const setNotebookVisibleSchema = z.object({
+  ...notebookSelectorFields,
+  visible: z.boolean().describe("Whether the notebook window should be visible in the Wolfram FrontEnd")
 }).strict();
 
 export const getCellOutputSchema = z.object({

@@ -43,7 +43,7 @@ export async function openNotebookWithDefaultApp(
   });
 }
 
-function validateNotebookPath(notebookPath: string): string {
+export function validateNotebookPath(notebookPath: string): string {
   if (!path.isAbsolute(notebookPath)) {
     throw new Error("BAD_REQUEST: path must be an absolute .nb file path");
   }

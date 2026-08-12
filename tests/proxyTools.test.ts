@@ -54,6 +54,7 @@ describe("proxy MCP tools", () => {
       "mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",
+      "mma_set_notebook_visible",
     ]);
   });
 

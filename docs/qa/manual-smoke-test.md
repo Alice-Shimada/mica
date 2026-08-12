@@ -26,6 +26,9 @@ Run this checklist before tagging a release or after significant changes to the 
 - [ ] **mma_abort_evaluation** on `Pause[60]` — insert a cell with `Pause[60]`, run it, then abort. Confirm the abort succeeds and the kernel is responsive again.
 - [ ] **save denied by default** — `mma_save_notebook` returns `PERMISSION_DENIED` with the default installer permissions.
 - [ ] **enable save and save succeeds** — manually set `SaveNotebook -> True` in the permissions block, restart the bridge, then `mma_save_notebook` succeeds.
+- [ ] **hidden open** — `mma_open_notebook` with `visible: false` on an existing `.nb` returns `status: "opened_hidden"` with a `notebookId`, no new window appears, and the notebook stays registered (kept alive by the heartbeat).
+- [ ] **hidden open runs cells** — target the hidden notebook with `mma_insert_cell` / `mma_run_cell` / `mma_get_cell_output` and confirm results come back while the window stays hidden.
+- [ ] **toggle window visibility** — `mma_set_notebook_visible` with `visible: true` brings the hidden notebook to the foreground (`shown`), hiding it again returns `hidden`, and repeating the current state returns `unchanged`.
 - [ ] **uninstall** — `node scripts/install.js --uninstall` removes the MICA block from `Kernel/init.m` and restores the backup.
 
 ## After Uninstall

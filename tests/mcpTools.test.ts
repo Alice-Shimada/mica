@@ -371,7 +371,8 @@ describe("Bun backend MCP compatibility", () => {
       "mma_restart_kernel",
       "mma_get_cell_output",
       "mma_read_artifact",
-      "mma_save_notebook"
+      "mma_save_notebook",
+      "mma_set_notebook_visible"
     ]);
 
     await expect(registrations[0]!.handler({})).resolves.toMatchObject({

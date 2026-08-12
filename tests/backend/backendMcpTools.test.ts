@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z, type ZodRawShape } from "zod";
 import { BackendState } from "../../src/backend/backendState.js";
 import { executeBackendMcpTool, registerBackendMcpTools, resolveToolTarget } from "../../src/mcp/backendTools.js";
@@ -214,6 +217,7 @@ expect(registrations.map((entry) => entry.name)).toEqual([
       "mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",
+      "mma_set_notebook_visible",
     ]);
   });
 
@@ -742,6 +746,7 @@ expect(registrations.map((entry) => entry.name)).toEqual([
       { tool: "mma_kill_kernel", args: {}, permission: "RunCell" as const },
       { tool: "mma_restart_kernel", args: {}, permission: "RunCell" as const },
       { tool: "mma_save_notebook", args: {}, permission: "SaveNotebook" as const },
+      { tool: "mma_set_notebook_visible", args: { visible: false }, permission: "OpenNotebook" as const },
     ];
 
     for (const denied of deniedCases) {
@@ -772,6 +777,112 @@ expect(registrations.map((entry) => entry.name)).toEqual([
       });
       expect(state.queue.snapshot().queued).toHaveLength(0);
     }
+  });
+
+  it("queues mma_set_notebook_visible when the OpenNotebook permission is granted", async () => {
+    const state = makeState();
+    const notebook = makeNotebook(state, {
+      displayName: "Background.nb",
+      windowTitle: "Background.nb",
+      permissions: {
+        ReadNotebook: true,
+        InsertCell: true,
+        ModifyCell: true,
+        DeleteCell: true,
+        RunCell: true,
+        SaveNotebook: true,
+        CreateNotebook: false,
+        OpenNotebook: true,
+      },
+    });
+    state.activeNotebookId = notebook.notebookId;
+    const handler = registrationByName(registerTools(state), "mma_set_notebook_visible").handler;
+
+    const pending = handler({ visible: true });
+    const queued = state.queue.snapshot().queued[0];
+    if (!queued) throw new Error("expected queued request");
+
+    expect(queued).toMatchObject({
+      tool: "mma_set_notebook_visible",
+      targetNotebookId: notebook.notebookId,
+      agentSessionId: "agent-1",
+      timeoutMs: 10_000,
+      arguments: expect.objectContaining({ visible: true }),
+    });
+
+    state.queue.resolve(queued.requestId, { status: "shown", notebookId: notebook.notebookId, visible: true }, Date.now() + 1);
+    await expect(pending).resolves.toMatchObject({
+      structuredContent: expect.objectContaining({ ok: true, status: "shown", visible: true }),
+    });
+  });
+
+  describe("hidden notebook opening", () => {
+    let tempDir: string;
+    let hiddenPath: string;
+
+    beforeEach(() => {
+      tempDir = mkdtempSync(path.join(tmpdir(), "mica-hidden-open-"));
+      hiddenPath = path.join(tempDir, "Background.nb");
+      writeFileSync(hiddenPath, "Notebook[{}]");
+    });
+
+    afterEach(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    it("routes visible:false opens through the live agent and returns the opened result", async () => {
+      const state = makeState();
+      makeNotebook(state, { displayName: "Any.nb", windowTitle: "Any.nb" });
+      const pending = executeBackendMcpTool(state, "mma_open_notebook", { path: hiddenPath, visible: false });
+
+      const queued = state.queue.snapshot().queued[0];
+      if (!queued) throw new Error("expected queued request");
+
+      expect(queued).toMatchObject({
+        tool: "mma_open_notebook",
+        targetNotebookId: "__agent__agent-1",
+        agentSessionId: "agent-1",
+        timeoutMs: 60_000,
+        arguments: expect.objectContaining({ path: hiddenPath, visible: false }),
+      });
+
+      state.queue.resolve(queued.requestId, { status: "opened_hidden", notebookId: "notebook-2", path: hiddenPath, visible: false }, Date.now() + 1);
+      await expect(pending).resolves.toMatchObject({
+        structuredContent: expect.objectContaining({
+          ok: true,
+          status: "opened_hidden",
+          notebookId: "notebook-2",
+          visible: false,
+        }),
+      });
+    });
+
+    it("rejects hidden opens whose file does not exist", async () => {
+      const state = makeState();
+      makeNotebook(state, { displayName: "Any.nb", windowTitle: "Any.nb" });
+
+      await expect(executeBackendMcpTool(state, "mma_open_notebook", { path: path.join(tempDir, "Missing.nb"), visible: false })).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({ code: "FILE_NOT_FOUND", retryable: false }),
+        },
+      });
+      expect(state.queue.snapshot().queued).toHaveLength(0);
+    });
+
+    it("fails hidden opens when no live agent is registered", async () => {
+      const state = new BackendState(() => "notebook-1");
+
+      await expect(executeBackendMcpTool(state, "mma_open_notebook", { path: hiddenPath, visible: false })).resolves.toMatchObject({
+        isError: true,
+        structuredContent: {
+          ok: false,
+          error: expect.objectContaining({ code: "NO_LIVE_AGENT", retryable: true }),
+        },
+      });
+      expect(state.queue.snapshot().queued).toHaveLength(0);
+    });
   });
 
   it("routes queued work to the notebook's agent session id", async () => {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BackendState } from "../backend/backendState.js";
-import { openNotebookWithDefaultApp } from "../backend/openNotebookViaOs.js";
+import { openNotebookWithDefaultApp, validateNotebookPath } from "../backend/openNotebookViaOs.js";
 import { DEFAULT_TIMEOUTS_MS, type NotebookRecord } from "../backend/protocol.js";
 import {
   abortEvaluationSchema,
@@ -18,8 +18,9 @@ import {
   readCellSchema,
   restartKernelSchema,
   runCellSchema,
-  selectNotebookSchema,
   saveNotebookSchema,
+  selectNotebookSchema,
+  setNotebookVisibleSchema,
   symbolLookupSchema,
 } from "./toolSchemas.js";
 import {
@@ -240,12 +241,20 @@ timeoutMs: (args) => {
     schema: readArtifactSchema.shape,
     permission: "ReadNotebook",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.readCell,
-  },
+},
   {
     name: "mma_save_notebook",
     summary: "Save the attached Mathematica notebook through the FrontEnd.",
     schema: saveNotebookSchema.shape,
     permission: "SaveNotebook",
+    timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
+    requiresExplicitTarget: true,
+  },
+  {
+    name: "mma_set_notebook_visible",
+    summary: "Show or hide the notebook window in the Wolfram FrontEnd. Tied to the OpenNotebook permission.",
+    schema: setNotebookVisibleSchema.shape,
+    permission: "OpenNotebook",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,
     requiresExplicitTarget: true,
   },
@@ -327,11 +336,28 @@ if (tool === "mma_select_notebook") {
     });
   }
 
-  if (tool === "mma_open_notebook") {
+if (tool === "mma_open_notebook") {
     return withToolErrors({ tool, args: recordArgs }, async () => {
       const notebookPath = recordArgs.path;
       if (typeof notebookPath !== "string") throw new Error("BAD_REQUEST: path is required.");
-      return toolSuccess(await openNotebookWithDefaultApp(notebookPath));
+      if (recordArgs.visible !== false) {
+        return toolSuccess(await openNotebookWithDefaultApp(notebookPath));
+      }
+      validateNotebookPath(notebookPath);
+      sweepStateLiveness(state);
+      const live = state.agents.list().find((a) => !a.offline && !a.retired);
+      if (!live) throw new Error("NO_LIVE_AGENT");
+      const requestId = randomUUID();
+      state.queue.enqueue({
+        requestId,
+        tool,
+        arguments: recordArgs,
+        targetNotebookId: `__agent__${live.agentSessionId}`,
+        agentSessionId: live.agentSessionId,
+        timeoutMs: DEFAULT_TIMEOUTS_MS.insertCell,
+        createdAt: Date.now(),
+      });
+      return toolSuccess(await state.queue.waitForResult(requestId));
     });
   }
 

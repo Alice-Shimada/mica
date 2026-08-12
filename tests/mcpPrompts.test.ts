@@ -70,15 +70,16 @@ describe("MICA MCP prompts", () => {
       "mma_restart_kernel",
       "mma_create_notebook",
       "mma_open_notebook",
-      "mma_get_cell_output",
+"mma_get_cell_output",
       "mma_read_artifact",
       "mma_save_notebook",
+      "mma_set_notebook_visible",
     ]) {
       expect(text).toContain(tool);
     }
     expect(text).toContain('afterCellId="__end__"');
     expect(text).toContain("Do not use detached wolframscript");
-    expect(text).toContain("Do not create hidden or offscreen notebooks");
+    expect(text).toContain("Hidden/offscreen notebooks are only for when the user asks you to run a notebook without showing it");
     expect(text).toContain("ok: true");
     expect(text).toContain("ok: false");
   });

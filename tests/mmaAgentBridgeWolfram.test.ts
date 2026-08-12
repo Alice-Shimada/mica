@@ -157,7 +157,7 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(source).toContain('CreateNotebookRequest[args_Association]');
     expect(source).toContain('OpenNotebookRequest[args_Association]');
     expect(source).toContain('CreateDocument[{}, WindowTitle -> title, Visible -> True]');
-    expect(source).toContain('NotebookOpen[path, Visible -> True]');
+    expect(source).toContain('NotebookOpen[path, Visible -> visible]');
     expect(source).toContain('"CreateNotebook" -> False');
     expect(source).toContain('"OpenNotebook" -> False');
     expect(abortBody).toContain('CellEvaluationCompleteQ[notebook, runningCellId]');
@@ -815,6 +815,39 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(notebookOpenIndex).toBeGreaterThan(openConfirmIndex);
   });
 
+  it("opens notebooks hidden in the FrontEnd and toggles window visibility under the OpenNotebook permission", () => {
+    expect(source).toContain('"mma_set_notebook_visible", SetNotebookVisibilityRequest[args]');
+    expect(source).toContain('SetNotebookVisibilityRequest[args_Association]');
+    expect(source).toContain('visible = If[TrueQ[Lookup[args, "visible", True]], True, False];');
+    expect(source).toContain('NotebookOpen[path, Visible -> visible]');
+    expect(source).toContain('"status" -> If[visible, "opened", "opened_hidden"]');
+    expect(source).toContain('CurrentValue[notebook, Visible]');
+    expect(source).toContain('SetOptions[notebook, Visible -> visible]');
+    expect(source).toContain('ConfirmAction["OpenNotebook", "AI requests changing the notebook window visibility. Allow?", notebookId]');
+    expect(source).toContain('<|"status" -> If[visible, "shown", "hidden"], "notebookId" -> notebookId, "visible" -> visible|>');
+
+    const visibilityStart = source.indexOf("SetNotebookVisibilityRequest[args_Association]");
+    const saveStart = source.indexOf("SaveNotebookRequest[args_Association]", visibilityStart);
+    const visibilityBody = source.slice(visibilityStart, saveStart);
+    const openStart = source.indexOf("OpenNotebookRequest[args_Association]");
+    const openBody = source.slice(openStart, visibilityStart);
+    const confirmIndex = visibilityBody.indexOf('ConfirmAction["OpenNotebook"');
+    const toggleIndex = visibilityBody.indexOf("SetOptions[notebook, Visible -> visible]");
+    expect(visibilityStart).toBeGreaterThanOrEqual(0);
+    expect(saveStart).toBeGreaterThan(visibilityStart);
+    expect(confirmIndex).toBeGreaterThanOrEqual(0);
+    expect(toggleIndex).toBeGreaterThan(confirmIndex);
+    expect(openBody).toContain('$BridgeNotebooks[notebookId] = Join[');
+    expect(openBody).toContain('"frontendObjectKey" -> Lookup[response, "frontendObjectKey", Lookup[payload, "frontendObjectKey", FrontendObjectKey[nb]]]');
+  });
+
+  it("keeps tracked hidden notebooks alive in the agent heartbeat", () => {
+    expect(source).toContain('AgentTrackedNotebooks[]');
+    expect(source).toContain('DeleteDuplicates @ Join[AgentVisibleNotebooks[], AgentTrackedNotebooks[]]');
+    expect(source).toContain('AgentTrackedNotebooks[] := Module[{records, openNotebooks}');
+    expect(source).toContain('MemberQ[openNotebooks, Lookup[record, "notebook", None]]');
+  });
+
   it("includes a textual paclet palette launcher notebook", () => {
     const launcher = readFileSync(launcherPath, "utf8");
 
@@ -934,7 +967,8 @@ it("supports abort evaluation requests without claiming confirmed abort", () => 
     expect(helperStart).toBeGreaterThanOrEqual(0);
     expect(tickStart).toBeGreaterThan(helperStart);
     expect(helperBody).toContain('notebooks = AgentVisibleNotebooks[]');
-    expect(helperBody).toContain('If[Length[notebooks] == 0, Return[notebooks]]');
+    expect(helperBody).toContain('trackedNotebooks = AgentTrackedNotebooks[]');
+    expect(helperBody).toContain('If[Length[notebooks] == 0 && Length[trackedNotebooks] == 0, Return[notebooks]]');
     expect(helperBody).toContain('heartbeat = Quiet @ Check[AgentHeartbeat[], $Failed]');
     expect(helperBody).toContain('reason = If[AssociationQ[heartbeat], Lookup[Lookup[heartbeat, "error", <||>], "reason", None], None]');
     expect(helperBody).toContain('If[reason === "superseded", Return[notebooks]]');

@@ -98,6 +98,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     message: "The MCP client cancelled the operation.",
     retryable: false,
   },
+  USER_DENIED: {
+    code: "USER_DENIED",
+    message: "The user denied or cancelled the operation.",
+    retryable: false,
+  },
   REQUEST_TIMED_OUT: {
     code: "REQUEST_TIMED_OUT",
     message: "The Mathematica control agent did not answer before the tool timeout.",

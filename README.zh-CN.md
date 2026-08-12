@@ -181,7 +181,7 @@ MICA 在两个 MCP-facing 位置暴露使用指导：
 - Server initialization `instructions`
 - 可复用 prompt：`mica_notebook_workflow`
 
-这个 prompt 会要求 Agent 从 `mma_status` 或 `mma_list_notebooks` 开始，使用当前的 `notebookId`，避免操作隐藏或离屏 Notebook；只有在用户明确要求创建或打开 Notebook 时才使用 `mma_create_notebook` / `mma_open_notebook`；避免用 detached `wolframscript` 调试 live Notebook，并处理结构化的 `ok: true` / `ok: false` 响应。
+这个 prompt 会要求 Agent 从 `mma_status` 或 `mma_list_notebooks` 开始，使用当前的 `notebookId`，只在用户明确要求以不显示窗口的方式运行 Notebook 时才使用隐藏或离屏 Notebook；只有在用户明确要求创建或打开 Notebook 时才使用 `mma_create_notebook` / `mma_open_notebook`；避免用 detached `wolframscript` 调试 live Notebook，并处理结构化的 `ok: true` / `ok: false` 响应。
 
 它还包含 Wolfram Language 编写规范：按语境决定命名方式，而不是机械地把每个符号都改成大驼峰；正确使用 `SetDelayed`、`Module` / `With` / `Block`、标准 option 机制、可重复运行的 Notebook 状态和验证。Agent 会被明确要求让每个 Input cell 只承担一个连贯步骤，并在调试、教学或探索时暴露有用的中间结果。`mma_insert_cell` 和 `mma_modify_cell` 的 tool description 还会重复一份精简的 Cell 编写提醒，使客户端在真正修改 Notebook 时再次看到它。
 
@@ -193,7 +193,8 @@ MICA 在两个 MCP-facing 位置暴露使用指导：
 | `mma_list_notebooks` | 列出已注册的 live Notebook 和 active notebook id。 |
 | `mma_select_notebook` | 通过 `notebookId` 或无歧义的 `displayName` 选择 active Notebook。 |
 | `mma_create_notebook` | 通过 Wolfram FrontEnd 创建一个新的可见空白 Notebook。 |
-| `mma_open_notebook` | 通过本机 OS 默认应用打开一个已有的绝对 `.nb` 路径。 |
+| `mma_open_notebook` | 通过本机 OS 默认应用打开一个已有的绝对 `.nb` 路径，或通过 `visible: false` 在 FrontEnd 中隐藏打开。 |
+| `mma_set_notebook_visible` | 在 Wolfram FrontEnd 中显示或隐藏所选 Notebook 窗口（使用 `OpenNotebook` 权限）。 |
 | `mma_symbol_lookup` | 查询 Wolfram Language 的 usage、options、attributes 和文档 URL。 |
 | `mma_list_cells` | 列出所选 Notebook 中的 cell。 |
 | `mma_read_cell` | 读取单个 cell 的内容和 metadata。 |
@@ -218,7 +219,11 @@ MICA 在两个 MCP-facing 位置暴露使用指导：
 
 `mma_create_notebook` 会请求 live Wolfram FrontEnd control agent 创建一个可见空白 Notebook，因此需要 MICA 已经连接到 Wolfram Desktop。
 
-`mma_open_notebook` 则不同：它在 Node 后端运行，并通过本机 OS 文件关联打开已有 `.nb` 文件（Windows 使用 `rundll32`，macOS 使用 `open`，Linux 使用 `xdg-open`）。它只接受指向已有 `.nb` 文件的绝对路径，并且可以在还没有 MICA agent 连接时启动 Mathematica。该工具返回 `status: "launching"`；Notebook 打开且 bridge 注册完成后，再调用 `mma_list_notebooks` 获取当前 `notebookId`，之后再使用需要目标 Notebook 的工具。
+`mma_open_notebook` 通常不同：它在 Node 后端运行，并通过本机 OS 文件关联打开已有 `.nb` 文件（Windows 使用 `rundll32`，macOS 使用 `open`，Linux 使用 `xdg-open`）。它只接受指向已有 `.nb` 文件的绝对路径，并且可以在还没有 MICA agent 连接时启动 Mathematica。该工具返回 `status: "launching"`；Notebook 打开且 bridge 注册完成后，再调用 `mma_list_notebooks` 获取当前 `notebookId`，之后再使用需要目标 Notebook 的工具。
+
+传入 `visible: false` 则改为在隐藏的 FrontEnd 窗口中打开 Notebook：窗口不可见，但 Notebook 仍可正常求值 cell，适合把计算放到后台运行。隐藏打开在 live Wolfram control agent 内执行，返回 `status: "opened_hidden"` 和 `notebookId`，并由 `OpenNotebook` 权限把关（允许弹出的确认框，或在 bridge 权限 block 中设置 `OpenNotebook -> True`）。打开的 Notebook 会注册到 bridge，并由 agent 心跳持续保活，因此即使没有可见窗口，agent 也可以像对待普通 Notebook 一样使用常用工具对它操作。
+
+`mma_set_notebook_visible` 用于切换已注册 Notebook 窗口的可见性：传入 `visible: true` 会把隐藏的 Notebook 切到前台（`status: "shown"`），传入 `visible: false` 会再次隐藏（`status: "hidden"`）；请求当前状态时返回 `status: "unchanged"`。与隐藏打开一样，它使用 `OpenNotebook` 权限，并接受 `notebookId` / `displayName` selector。
 
 Kernel lifecycle 工具使用比普通 cell 修改更长的后端 timeout：`mma_kill_kernel` 和 `mma_restart_kernel` 有 60 秒，用于应对较慢的 FrontEnd/kernel 恢复过程。它们会拒绝作用于受保护的 MICA control-agent evaluator。
 
@@ -338,19 +343,19 @@ Doctor 会检查 Node 版本、package build、session file、auth token、serve
 - MICA 不提供远程访问模式。
 - MICA 不包含任意 shell 工具，也没有直接 raw-eval MCP endpoint。
 - Notebook 修改通过 Wolfram FrontEnd API 和显式权限完成。
-- `mma_open_notebook` 会通过 OS 默认应用启动本地 `.nb` 路径，但不会直接编辑 Notebook 文件。
+- `mma_open_notebook` 会通过 OS 默认应用启动本地 `.nb` 路径，但不会直接编辑 Notebook 文件；隐藏打开（`visible: false`）在 live Wolfram control agent 内执行，与 `mma_set_notebook_visible` 一起由 `OpenNotebook` 权限把关。
 - 安装器权限 block 默认禁用 `mma_save_notebook`。
 - Node/Bun 进程不会直接编辑 `.nb` 文件。
 
 ## 显式 Notebook Targeting
 
-设置 `MICA_STRICT_TARGETING=1` 后，所有需要目标 Notebook 且会修改状态的 MCP 工具（`mma_insert_cell`、`mma_modify_cell`、`mma_delete_cell`、`mma_run_cell`、`mma_abort_evaluation`、`mma_kill_kernel`、`mma_restart_kernel`、`mma_save_notebook`）都必须显式提供 `notebookId`（或 `displayName`）。只读 Notebook 工具（`mma_list_cells`、`mma_read_cell`、`mma_get_cell_output`、`mma_read_artifact`）仍然使用 active Notebook，`mma_symbol_lookup` 不受影响，因为它不针对某个 Notebook。`mma_open_notebook` 也不需要 Notebook selector，因为它是在 Notebook 获得 session-local `notebookId` 之前打开文件路径。启用 strict targeting 后，如果未提供 selector，工具会返回 error code `EXPLICIT_NOTEBOOK_REQUIRED`，并设置 `retryable: false`。默认行为（未设置 env var，或值不是 `"1"`）保持不变。
+设置 `MICA_STRICT_TARGETING=1` 后，所有需要目标 Notebook 且会修改状态的 MCP 工具（`mma_insert_cell`、`mma_modify_cell`、`mma_delete_cell`、`mma_run_cell`、`mma_abort_evaluation`、`mma_kill_kernel`、`mma_restart_kernel`、`mma_save_notebook`、`mma_set_notebook_visible`）都必须显式提供 `notebookId`（或 `displayName`）。只读 Notebook 工具（`mma_list_cells`、`mma_read_cell`、`mma_get_cell_output`、`mma_read_artifact`）仍然使用 active Notebook，`mma_symbol_lookup` 不受影响，因为它不针对某个 Notebook。`mma_open_notebook` 也不需要 Notebook selector，因为它是在 Notebook 获得 session-local `notebookId` 之前打开文件路径。启用 strict targeting 后，如果未提供 selector，工具会返回 error code `EXPLICIT_NOTEBOOK_REQUIRED`，并设置 `retryable: false`。默认行为（未设置 env var，或值不是 `"1"`）保持不变。
 
 ## 已知限制
 
 - 当 Wolfram kernel 已经繁忙时，取消操作是 best-effort。
 - 与 abort 相比，kernel kill/restart 更适合恢复卡住的 Notebook kernel，但 FrontEnd 恢复仍可能需要时间；重启后请轮询 `mma_status` / `mma_list_notebooks`。
-- `mma_open_notebook` 需要指向已有 `.nb` 文件的绝对路径，并依赖本机 OS 中 Mathematica/Wolfram Desktop 的文件关联。
+- `mma_open_notebook` 需要指向已有 `.nb` 文件的绝对路径；可见打开还需要本机 OS 中 Mathematica/Wolfram Desktop 的文件关联，而隐藏打开（`visible: false`）需要 live MICA agent，以便在隐藏的 FrontEnd 窗口中运行。
 - Cell id 是 session-local 的，重新打开 Notebook 后可能变化。
 - FrontEnd Notebook 操作目前是串行化的。
 - Legacy Palette flow 仅保留用于迁移期兼容；文档化的发布路径是 CLI + MCP server。

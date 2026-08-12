@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 - 2026-08-12
+
+- Add hidden notebook opening: `mma_open_notebook` accepts `visible: false` to open an existing `.nb` in a hidden Wolfram FrontEnd window that still evaluates cells, and the notebook is registered with the bridge so the agent can read, insert, and run cells against it like any other notebook.
+- Add `mma_set_notebook_visible` tool to show or hide the selected notebook window in the Wolfram FrontEnd (`status: shown` / `hidden` / `unchanged`).
+- Tie hidden opens and window-visibility changes to the existing `OpenNotebook` permission, and surface `USER_DENIED` when a permission prompt is refused.
+- Keep tracked notebooks (including hidden ones) alive in the agent heartbeat so background notebooks are no longer swept as stale, while ignoring notebooks already closed in the FrontEnd so they are not revived.
+- Route `visible: false` opens through the live control agent with a 60-second window for the permission prompt; visible opens keep using the local OS default application.
+
 ## 1.3.1 - 2026-07-26
 
 - Use the root `package.json` as the runtime version source instead of stale hard-coded `1.2.3` defaults.

@@ -1661,7 +1661,7 @@ CreateNotebookRequest[args_Association] := Module[{title, nb, notebookId, payloa
   <|"status" -> "created", "notebookId" -> notebookId, "title" -> title|>
 ];
 
-OpenNotebookRequest[args_Association] := Module[{path, nb, notebookId, payload, response},
+OpenNotebookRequest[args_Association] := Module[{path, visible, nb, notebookId, payload, response},
   path = Lookup[args, "path", ""];
   If[!StringQ[path] || StringLength[StringTrim[path]] == 0,
     Return[Failure["BAD_REQUEST", <|"message" -> "path is required."|>]]
@@ -1669,8 +1669,9 @@ OpenNotebookRequest[args_Association] := Module[{path, nb, notebookId, payload, 
   If[!FileExistsQ[path],
     Return[Failure["NOT_FOUND", <|"message" -> "File not found: " <> path|>]]
   ];
+  visible = If[TrueQ[Lookup[args, "visible", True]], True, False];
   If[Not @ ConfirmAction["OpenNotebook", "AI requests opening a notebook. Allow?"], Return[$Canceled]];
-  nb = Quiet @ Check[NotebookOpen[path, Visible -> True], $Failed];
+  nb = Quiet @ Check[NotebookOpen[path, Visible -> visible], $Failed];
   If[Head[nb] =!= NotebookObject, Return[Failure["OPEN_FAILED", <|"message" -> "The FrontEnd failed to open the notebook."|>]]];
   payload = NotebookHeartbeatPayload[nb];
   response = Quiet @ Check[BridgePost["/notebooks/heartbeat", payload], $Failed];
@@ -1678,7 +1679,38 @@ OpenNotebookRequest[args_Association] := Module[{path, nb, notebookId, payload, 
     Lookup[Lookup[response, "notebook", <||>], "notebookId", Lookup[response, "notebookId", None]],
     None
   ];
-  <|"status" -> "opened", "notebookId" -> notebookId, "path" -> path|>
+  If[StringQ[notebookId] && StringLength[notebookId] > 0,
+    $BridgeNotebooks[notebookId] = Join[
+      NotebookRecord[notebookId],
+      <|
+        "notebook" -> nb,
+        "frontendObjectKey" -> Lookup[response, "frontendObjectKey", Lookup[payload, "frontendObjectKey", FrontendObjectKey[nb]]],
+        "agentSessionId" -> $AgentSessionId,
+        "info" -> Lookup[response, "notebook", <||>],
+        "cellMap" -> <||>,
+        "nextCellId" -> 1,
+        "closed" -> False
+      |>
+    ]
+  ];
+  <|"status" -> If[visible, "opened", "opened_hidden"], "notebookId" -> notebookId, "path" -> path, "visible" -> visible|>
+];
+
+SetNotebookVisibilityRequest[args_Association] := Module[{notebookId, record, notebook, visible, current},
+  visible = TrueQ[Lookup[args, "visible", True]];
+  notebookId = TargetNotebookId[args];
+  If[!StringQ[notebookId] || StringLength[notebookId] == 0, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  record = NotebookRecord[notebookId];
+  If[!AssociationQ[record] || record === <||>, Return[Failure["BAD_REQUEST", <|"message" -> "No notebook is selected."|>]]];
+  notebook = Lookup[record, "notebook", None];
+  If[Head[notebook] =!= NotebookObject, Return[Failure["BAD_REQUEST", <|"message" -> "Notebook is unavailable."|>]]];
+  If[Not @ ConfirmAction["OpenNotebook", "AI requests changing the notebook window visibility. Allow?", notebookId], Return[$Canceled]];
+  current = TrueQ @ Quiet @ Check[CurrentValue[notebook, Visible], !visible];
+  If[current === visible, Return[<|"status" -> "unchanged", "notebookId" -> notebookId, "visible" -> visible|>]];
+  If[Quiet @ Check[SetOptions[notebook, Visible -> visible], $Failed] === $Failed,
+    Return[BridgeFailure["VISIBILITY_FAILED", "The FrontEnd failed to change the notebook window visibility."]]
+  ];
+  <|"status" -> If[visible, "shown", "hidden"], "notebookId" -> notebookId, "visible" -> visible|>
 ];
 
 SaveNotebookRequest[args_Association] := Module[{notebookId, record, notebook},
@@ -1797,7 +1829,23 @@ AgentHeartbeatNotebookClosure[notebookId_String] := Module[{record = Lookup[$Bri
   response
 ];
 
-HeartbeatNotebooks[] := Module[{notebooks = AgentVisibleNotebooks[], visibleNotebookIds = {}, trackedNotebookIds, staleNotebookIds},
+AgentTrackedNotebooks[] := Module[{records, openNotebooks},
+  openNotebooks = Quiet @ Check[Notebooks[], {}];
+  records = Select[
+    Values[$BridgeNotebooks],
+    Function[record,
+      AssociationQ[record] &&
+      !TrueQ[Lookup[record, "closed", False]] &&
+      Lookup[record, "agentSessionId", $AgentSessionId] === $AgentSessionId &&
+      Head[Lookup[record, "notebook", None]] === NotebookObject &&
+      MemberQ[openNotebooks, Lookup[record, "notebook", None]] &&
+      StringQ[Lookup[record, "frontendObjectKey", None]]
+    ]
+  ];
+  DeleteDuplicates @ Cases[records, record_ :> Lookup[record, "notebook", None]]
+];
+
+HeartbeatNotebooks[] := Module[{notebooks = DeleteDuplicates @ Join[AgentVisibleNotebooks[], AgentTrackedNotebooks[]], visibleNotebookIds = {}, trackedNotebookIds, staleNotebookIds},
     trackedNotebookIds = Select[
       Keys[$BridgeNotebooks],
       Function[notebookId, Module[{record = Lookup[$BridgeNotebooks, notebookId, <||>]},
@@ -1850,9 +1898,10 @@ HeartbeatNotebooks[] := Module[{notebooks = AgentVisibleNotebooks[], visibleNote
 
 PollAgentRequest[] := BridgeGet["/agents/" <> URLComponentEncodeString[$AgentSessionId] <> "/next-request"];
 
-EnsureAgentRegisteredForVisibleNotebooks[] := Module[{notebooks, heartbeat, reason},
+EnsureAgentRegisteredForVisibleNotebooks[] := Module[{notebooks, trackedNotebooks, heartbeat, reason},
   notebooks = AgentVisibleNotebooks[];
-  If[Length[notebooks] == 0, Return[notebooks]];
+  trackedNotebooks = AgentTrackedNotebooks[];
+  If[Length[notebooks] == 0 && Length[trackedNotebooks] == 0, Return[notebooks]];
   heartbeat = Quiet @ Check[AgentHeartbeat[], $Failed];
   reason = If[AssociationQ[heartbeat], Lookup[Lookup[heartbeat, "error", <||>], "reason", None], None];
   If[reason === "superseded", Return[notebooks]];
@@ -2069,6 +2118,7 @@ ExecuteRequest[request_Association] := Module[{requestId, tool, args, result},
           "mma_restart_kernel", RestartKernelRequest[args],
           "mma_create_notebook", CreateNotebookRequest[args],
           "mma_open_notebook", OpenNotebookRequest[args],
+          "mma_set_notebook_visible", SetNotebookVisibilityRequest[args],
           "mma_get_cell_output", GetCellOutputById[args],
           "mma_read_artifact", ReadArtifactById[args],
           "mma_save_notebook", SaveNotebookRequest[args],

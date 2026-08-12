@@ -181,7 +181,7 @@ MICA exposes usage guidance in two MCP-facing places:
 - Server initialization `instructions`
 - Reusable prompt: `mica_notebook_workflow`
 
-The prompt tells the agent to start with `mma_status` or `mma_list_notebooks`, use current `notebookId` values, avoid hidden/offscreen notebooks, use `mma_create_notebook` / `mma_open_notebook` only when the user explicitly wants a notebook created or opened, avoid detached `wolframscript` for live-notebook work, and handle structured `ok: true` / `ok: false` responses.
+The prompt tells the agent to start with `mma_status` or `mma_list_notebooks`, use current `notebookId` values, use hidden/offscreen notebooks only when the user explicitly asks to run a notebook without showing it, use `mma_create_notebook` / `mma_open_notebook` only when the user explicitly wants a notebook created or opened, avoid detached `wolframscript` for live-notebook work, and handle structured `ok: true` / `ok: false` responses.
 
 It also includes Wolfram Language authoring guidance: context-sensitive naming instead of mechanically capitalizing every symbol, appropriate use of `SetDelayed`, `Module` / `With` / `Block`, standard option handling, rerunnable notebook state, and verification. Agents are explicitly asked to keep one coherent step per Input cell and expose useful intermediate results while debugging, teaching, or exploring. The shorter Cell-authoring reminder is repeated in the `mma_insert_cell` and `mma_modify_cell` tool descriptions so clients see it at the point of mutation.
 
@@ -193,7 +193,8 @@ It also includes Wolfram Language authoring guidance: context-sensitive naming i
 | `mma_list_notebooks` | List registered live notebooks and the active notebook id. |
 | `mma_select_notebook` | Select the active notebook by `notebookId` or unambiguous `displayName`. |
 | `mma_create_notebook` | Create a new visible blank notebook through the Wolfram FrontEnd. |
-| `mma_open_notebook` | Open an existing absolute `.nb` path through the local OS default application. |
+| `mma_open_notebook` | Open an existing absolute `.nb` path through the local OS default application, or hidden in the FrontEnd with `visible: false`. |
+| `mma_set_notebook_visible` | Show or hide the selected notebook window in the Wolfram FrontEnd (uses the `OpenNotebook` permission). |
 | `mma_symbol_lookup` | Look up Wolfram Language usage, options, attributes, and documentation URLs. |
 | `mma_list_cells` | List cells in the selected notebook. |
 | `mma_read_cell` | Read one cell's content and metadata. |
@@ -218,7 +219,11 @@ All MCP tools return JSON text plus `structuredContent`.
 
 `mma_create_notebook` asks the live Wolfram FrontEnd control agent to create a visible blank notebook, so it requires MICA to already be connected to Wolfram Desktop.
 
-`mma_open_notebook` is different: it runs in the Node backend and launches an existing `.nb` file through the local OS file association (Windows `rundll32`, macOS `open`, Linux `xdg-open`). It accepts only absolute paths to existing `.nb` files and can start Mathematica even when no MICA agent is connected yet. The tool returns `status: "launching"`; after the notebook opens and the bridge registers, call `mma_list_notebooks` to get the current `notebookId` before using notebook-targeted tools.
+`mma_open_notebook` normally runs in the Node backend and launches an existing `.nb` file through the local OS file association (Windows `rundll32`, macOS `open`, Linux `xdg-open`). It accepts only absolute paths to existing `.nb` files and can start Mathematica even when no MICA agent is connected yet. The tool returns `status: "launching"`; after the notebook opens and the bridge registers, call `mma_list_notebooks` to get the current `notebookId` before using notebook-targeted tools.
+
+Pass `visible: false` to open the notebook in a hidden FrontEnd window instead: the notebook still evaluates cells normally but shows no window, which is useful for running work in the background. Hidden opens run inside the live Wolfram control agent, return `status: "opened_hidden"` with the `notebookId`, and are gated by the `OpenNotebook` permission (allow the prompt, or grant `OpenNotebook -> True` in the bridge permissions block). The opened notebook is registered with the bridge and kept alive by the agent heartbeat, so the agent can target it with the usual notebook tools even though no window is visible.
+
+`mma_set_notebook_visible` toggles a registered notebook's window visibility in the FrontEnd: pass `visible: true` to bring a hidden notebook to the foreground (`status: "shown"`) or `visible: false` to hide it again (`status: "hidden"`); requesting the current state returns `status: "unchanged"`. Like hidden opens, it uses the `OpenNotebook` permission and accepts a `notebookId` / `displayName` selector.
 
 Kernel lifecycle tools use a longer backend timeout than ordinary cell mutations: `mma_kill_kernel` and `mma_restart_kernel` have 60 seconds to account for slow FrontEnd/kernel recovery. They refuse to act on the protected MICA control-agent evaluator.
 
@@ -338,19 +343,19 @@ If the doctor passes but you still see `NO_LIVE_AGENT`, `NOTEBOOK_STALE`, or con
 - MICA does not include a remote access mode.
 - There is no arbitrary shell tool and no direct raw-eval MCP endpoint.
 - Notebook mutation goes through Wolfram FrontEnd APIs and explicit permissions.
-- `mma_open_notebook` launches a local `.nb` path through the OS default application but does not edit the notebook file directly.
+- `mma_open_notebook` launches a local `.nb` path through the OS default application but does not edit the notebook file directly; hidden opens (`visible: false`) run in the live Wolfram control agent and are gated by the `OpenNotebook` permission alongside `mma_set_notebook_visible`.
 - `mma_save_notebook` is disabled by default in the installer permission block.
 - The Node/Bun process does not directly edit `.nb` files.
 
 ## Explicit Notebook Targeting
 
-Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`) for all notebook-targeted mutating MCP tools (`mma_insert_cell`, `mma_modify_cell`, `mma_delete_cell`, `mma_run_cell`, `mma_abort_evaluation`, `mma_kill_kernel`, `mma_restart_kernel`, `mma_save_notebook`). Read-only notebook tools (`mma_list_cells`, `mma_read_cell`, `mma_get_cell_output`, `mma_read_artifact`) continue to use the active notebook, and `mma_symbol_lookup` is unaffected because it does not target a notebook. `mma_open_notebook` also does not require a notebook selector because it opens a file path before the notebook has a session-local `notebookId`. When strict targeting is enabled and no selector is provided, the tool returns error code `EXPLICIT_NOTEBOOK_REQUIRED` with `retryable: false`. Default behavior (no env var or any value other than `"1"`) is unchanged.
+Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`) for all notebook-targeted mutating MCP tools (`mma_insert_cell`, `mma_modify_cell`, `mma_delete_cell`, `mma_run_cell`, `mma_abort_evaluation`, `mma_kill_kernel`, `mma_restart_kernel`, `mma_save_notebook`, `mma_set_notebook_visible`). Read-only notebook tools (`mma_list_cells`, `mma_read_cell`, `mma_get_cell_output`, `mma_read_artifact`) continue to use the active notebook, and `mma_symbol_lookup` is unaffected because it does not target a notebook. `mma_open_notebook` also does not require a notebook selector because it opens a file path before the notebook has a session-local `notebookId`. When strict targeting is enabled and no selector is provided, the tool returns error code `EXPLICIT_NOTEBOOK_REQUIRED` with `retryable: false`. Default behavior (no env var or any value other than `"1"`) is unchanged.
 
 ## Known Limitations
 
 - Cancellation is best-effort when the Wolfram kernel is already busy.
 - Kernel kill/restart is more reliable than abort for recovering a stuck notebook kernel, but FrontEnd recovery can still take time; poll `mma_status` / `mma_list_notebooks` after restart.
-- `mma_open_notebook` requires an absolute path to an existing `.nb` file and a local OS file association for Mathematica/Wolfram Desktop.
+- `mma_open_notebook` requires an absolute path to an existing `.nb` file; visible opens also need a local OS file association for Mathematica/Wolfram Desktop, while hidden opens (`visible: false`) need a live MICA agent so they can run in the hidden FrontEnd window.
 - Cell ids are session-local and can change after reopening a notebook.
 - FrontEnd notebook operations are currently serialized.
 - The legacy Palette flow remains only for compatibility during migration; the documented release path is the CLI plus MCP server.
