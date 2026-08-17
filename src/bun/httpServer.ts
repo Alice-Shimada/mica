@@ -128,7 +128,7 @@ export function createFetchHandler(state: BackendState, options: Partial<Dashboa
             // Keep this explicit so the UI can describe dashboard access without exposing it.
             dashboardTokenPresent: Boolean(runtimeInfo.authToken),
           },
-          agents: state.agents.list(),
+          agents: state.agents.listLive(),
           notebooks: state.notebooks.listLive(),
           requests: summarizeRequests(state.queue.snapshot()),
         });

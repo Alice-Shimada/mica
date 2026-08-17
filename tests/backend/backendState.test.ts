@@ -229,6 +229,18 @@ describe("BackendState", () => {
     expect(state.notebooks.listLive()).toEqual([]);
   });
 
+  it("removes inactive agent tombstones after the retention window", () => {
+    const state = new BackendState(() => "notebook-1");
+    state.agents.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    state.agents.retire("agent-1", 2000, "no_live_notebooks");
+
+    state.sweepLiveness(31_999);
+    expect(state.agents.get("agent-1")?.retired).toBe(true);
+
+    state.sweepLiveness(32_000);
+    expect(state.agents.get("agent-1")).toBeUndefined();
+  });
+
   it("does not retire an offline agent when a new agent registers", () => {
     let nextNotebookId = 0;
     const state = new BackendState(() => `notebook-${++nextNotebookId}`);

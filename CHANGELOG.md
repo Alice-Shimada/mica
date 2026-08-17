@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.1 - 2026-08-17
+
+- Keep only live agents in the status and dashboard views. Agents retired after their last notebook closes, or marked offline after a broken connection, are retained briefly for protocol recovery and then pruned from the registry instead of accumulating indefinitely.
+- Preserve structured backend error payloads when the MCP proxy receives a non-success HTTP response. JSON errors now retain their original code and message; non-JSON responses report a retryable `MCP_PROXY_HTTP_ERROR` with the HTTP status.
+
 ## 1.4.0 - 2026-08-12
 
 - Add hidden notebook opening: `mma_open_notebook` accepts `visible: false` to open an existing `.nb` in a hidden Wolfram FrontEnd window that still evaluates cells, and the notebook is registered with the bridge so the agent can read, insert, and run cells against it like any other notebook.

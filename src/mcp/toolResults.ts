@@ -78,6 +78,11 @@ const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
     message: "No live Mathematica control agent is registered.",
     retryable: true,
   },
+  MCP_PROXY_HTTP_ERROR: {
+    code: "MCP_PROXY_HTTP_ERROR",
+    message: "The local MICA backend returned an HTTP error.",
+    retryable: true,
+  },
   OPEN_FAILED: {
     code: "OPEN_FAILED",
     message: "The local operating system failed to open the notebook.",

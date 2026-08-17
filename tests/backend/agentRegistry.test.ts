@@ -96,6 +96,30 @@ describe("AgentRegistry", () => {
     expect(registry.get("agent-1")?.retiredReason).toBe("no_live_notebooks");
   });
 
+  it("excludes offline and retired agents from the live status view", () => {
+    const registry = new AgentRegistry();
+    registry.register({ agentSessionId: "agent-live", wolframVersion: "13.3", platform: "Windows", seenAt: 3000 });
+    registry.register({ agentSessionId: "agent-offline", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    registry.register({ agentSessionId: "agent-retired", wolframVersion: "13.3", platform: "Windows", seenAt: 2000 });
+    registry.markOfflineOlderThan(5000, 1000);
+    registry.heartbeat("agent-live", 5000);
+    registry.retire("agent-retired", 5000, "no_live_notebooks");
+
+    expect(registry.listLive().map((agent) => agent.agentSessionId)).toEqual(["agent-live"]);
+    expect(registry.get("agent-retired")?.retired).toBe(true);
+  });
+
+  it("prunes an inactive agent after its tombstone window", () => {
+    const registry = new AgentRegistry();
+    registry.register({ agentSessionId: "agent-1", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });
+    registry.retire("agent-1", 2000, "no_live_notebooks");
+
+    expect(registry.pruneInactiveOlderThan(31_999, 30_000)).toEqual([]);
+    expect(registry.get("agent-1")?.retired).toBe(true);
+    expect(registry.pruneInactiveOlderThan(32_000, 30_000)).toEqual(["agent-1"]);
+    expect(registry.get("agent-1")).toBeUndefined();
+  });
+
   it("preserves the existing reason when another registration sees an already retired agent", () => {
     const registry = new AgentRegistry();
     registry.register({ agentSessionId: "agent-empty", wolframVersion: "13.3", platform: "Windows", seenAt: 1000 });

@@ -481,6 +481,9 @@ describe("Bun HTTP app", () => {
     expect(state.agents.get("agent-1")?.retiredReason).toBe("no_live_notebooks");
     expect(state.requireLiveAgent()).toEqual({ ok: false, error: "NO_LIVE_AGENT" });
 
+    const statusResponse = await fetch(`${base}/status`);
+    await expect(statusResponse.json()).resolves.toMatchObject({ agents: [] });
+
     const heartbeatResponse = await fetch(`${base}/notebooks/heartbeat`, {
       method: "POST",
       headers: { "content-type": "application/json" },

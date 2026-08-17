@@ -87,6 +87,10 @@ export class AgentRegistry {
       .map((agent) => this.clone(agent));
   }
 
+  listLive(): AgentInfo[] {
+    return this.list().filter((agent) => !agent.offline && !agent.retired);
+  }
+
   hasLiveAgent(): boolean {
     for (const agent of this.agents.values()) {
       if (!agent.offline && !agent.retired) return true;
@@ -133,6 +137,19 @@ export class AgentRegistry {
     }
 
     return newlyDegraded;
+  }
+
+  pruneInactiveOlderThan(now: number, maxAgeMs: number): string[] {
+    const pruned: string[] = [];
+
+    for (const agent of this.agents.values()) {
+      if (!agent.offline || agent.offlineAt === undefined) continue;
+      if (now - agent.offlineAt < maxAgeMs) continue;
+      this.agents.delete(agent.agentSessionId);
+      pruned.push(agent.agentSessionId);
+    }
+
+    return pruned;
   }
 
   private clone(agent: AgentInfo): AgentInfo {

@@ -126,6 +126,10 @@ node dist/src/cli/index.js uninstall
 
 `mica status` 会打印当前 session file、server URL、version、PID、live agent/notebook 数量，以及带 token 的 dashboard URL。如果 server 已经在运行，`mica mcp` 会代理到已有后端，而不是因为端口占用直接失败；因此你随时可以用它找回 dashboard token。
 
+### 生命周期与错误恢复
+
+只要 Wolfram Desktop 仍在运行，MICA 会保留隐藏的 FrontEnd control loop，以便发现同一会话中之后打开的 Notebook。状态页和 dashboard 只显示 live agent；连接丢失的 agent 会先进入退休或离线状态，保留一个短暂恢复窗口后再从 registry 清理。MCP proxy 收到本地后端 HTTP 错误时，会尽可能保留结构化 JSON 错误的原始详情；若响应不是 JSON，则以 `MCP_PROXY_HTTP_ERROR` 和 HTTP 状态报告，而不再统一坍缩为通用内部错误。
+
 兼容用的 legacy 安装入口仍然可用：`node scripts/install.js --dry-run`。
 
 ## MCP Client 配置

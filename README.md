@@ -126,6 +126,10 @@ node dist/src/cli/index.js uninstall
 
 `mica status` prints the current session file, server URL, version, PID, live agent/notebook counts, and the token-bearing dashboard URL. If a server is already running, `mica mcp` proxies to it instead of failing with a port-in-use error, so you can recover the dashboard token at any time.
 
+### Lifecycle and error recovery
+
+MICA keeps its hidden FrontEnd control loop available while Wolfram Desktop remains open so it can discover notebooks opened later in the same session. Status and dashboard views show only live agents; agents that have lost their connection are retired or marked offline, then pruned after a short recovery window. When the MCP proxy receives an HTTP error from the local backend, it preserves structured JSON error details where available and otherwise reports the HTTP status as `MCP_PROXY_HTTP_ERROR`, rather than collapsing the failure into a generic internal error.
+
 The legacy installer entry remains available for compatibility: `node scripts/install.js --dry-run`.
 
 ## MCP Client Config

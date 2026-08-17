@@ -50,11 +50,29 @@ async function callProxyTool(
     });
 
     if (!response.ok) {
-      return toolFailure(new Error(`MCP_PROXY_HTTP_${response.status}`), { tool, args });
+      return proxyHttpFailure(response, tool, args);
     }
 
     return (await response.json()) as StructuredToolResult;
   } catch (error) {
     return toolFailure(error, { tool, args });
   }
+}
+
+async function proxyHttpFailure(response: Response, tool: string, args: Record<string, unknown>): Promise<StructuredToolResult> {
+  const body = await response.text();
+  try {
+    const payload = JSON.parse(body) as unknown;
+    if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+      return toolFailure(payload, { tool, args });
+    }
+  } catch {
+    // Fall through to an HTTP-status diagnostic when the backend body is not JSON.
+  }
+
+  return toolFailure({
+    code: "MCP_PROXY_HTTP_ERROR",
+    message: `The local MICA backend returned HTTP ${response.status}.`,
+    retryable: response.status >= 500,
+  }, { tool, args });
 }

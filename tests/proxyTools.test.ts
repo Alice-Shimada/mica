@@ -85,4 +85,43 @@ describe("proxy MCP tools", () => {
       clientSessionId: "client-1",
     });
   });
+
+  it("preserves structured backend errors from non-success HTTP responses", async () => {
+    const registrations = registerTools(async () => new Response(JSON.stringify({
+      error: { code: "INTERNAL_ERROR", message: "The backend could not read the request body." },
+    }), { status: 500, headers: { "content-type": "application/json" } }));
+
+    const result = await registrationByName(registrations, "mma_status").handler({});
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "The backend could not read the request body.",
+          tool: "mma_status",
+        },
+      },
+    });
+  });
+
+  it("reports the HTTP status when a failed backend response is not JSON", async () => {
+    const registrations = registerTools(async () => new Response("upstream unavailable", { status: 503 }));
+
+    const result = await registrationByName(registrations, "mma_status").handler({});
+
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        ok: false,
+        error: {
+          code: "MCP_PROXY_HTTP_ERROR",
+          message: "The local MICA backend returned HTTP 503.",
+          retryable: true,
+          tool: "mma_status",
+        },
+      },
+    });
+  });
 });

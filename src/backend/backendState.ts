@@ -43,6 +43,7 @@ export class BackendState {
     for (const agentSessionId of offlineAgents) {
       this.notebooks.markStaleByAgent(agentSessionId, now);
     }
+    this.agents.pruneInactiveOlderThan(now, DEFAULT_TIMEOUTS_MS.agentHeartbeatOfflineMs);
     this.clearInactiveActiveNotebook();
 
     return {
