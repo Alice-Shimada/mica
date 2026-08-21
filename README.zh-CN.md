@@ -130,8 +130,6 @@ node dist/src/cli/index.js uninstall
 
 只要 Wolfram Desktop 仍在运行，MICA 会保留隐藏的 FrontEnd control loop，以便发现同一会话中之后打开的 Notebook。状态页和 dashboard 只显示 live agent；连接丢失的 agent 会先进入退休或离线状态，保留一个短暂恢复窗口后再从 registry 清理。MCP proxy 收到本地后端 HTTP 错误时，会尽可能保留结构化 JSON 错误的原始详情；若响应不是 JSON，则以 `MCP_PROXY_HTTP_ERROR` 和 HTTP 状态报告，而不再统一坍缩为通用内部错误。
 
-兼容用的 legacy 安装入口仍然可用：`node scripts/install.js --dry-run`。
-
 ## MCP Client 配置
 
 打印可复制的 MCP config snippet：
@@ -284,7 +282,6 @@ npm run dev:bridge
 | `npm run dev:bridge` | 启动 TypeScript bridge 和 dashboard，不启用 stdio MCP。 |
 | `npm run dev:bun:mcp` | 通过 Bun 启动 MCP server。 |
 | `npm run dev:bun` | 通过 Bun 启动 bridge 和 dashboard，不启用 stdio MCP。 |
-| `npm run dev:legacy` | 启动 legacy Node HTTP bridge，用于 Palette 兼容性测试。 |
 | `npm run build` | 在 `dist/` 下输出生产 JavaScript。 |
 
 ## 验证清单
@@ -362,7 +359,6 @@ Doctor 会检查 Node 版本、package build、session file、auth token、serve
 - `mma_open_notebook` 需要指向已有 `.nb` 文件的绝对路径；可见打开还需要本机 OS 中 Mathematica/Wolfram Desktop 的文件关联，而隐藏打开（`visible: false`）需要 live MICA agent，以便在隐藏的 FrontEnd 窗口中运行。
 - Cell id 是 session-local 的，重新打开 Notebook 后可能变化。
 - FrontEnd Notebook 操作目前是串行化的。
-- Legacy Palette flow 仅保留用于迁移期兼容；文档化的发布路径是 CLI + MCP server。
 
 ## 许可证
 

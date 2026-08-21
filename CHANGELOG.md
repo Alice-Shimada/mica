@@ -1,17 +1,20 @@
 # Changelog
 
-## 1.4.1 - 2026-08-17
-
-- Keep only live agents in the status and dashboard views. Agents retired after their last notebook closes, or marked offline after a broken connection, are retained briefly for protocol recovery and then pruned from the registry instead of accumulating indefinitely.
-- Preserve structured backend error payloads when the MCP proxy receives a non-success HTTP response. JSON errors now retain their original code and message; non-JSON responses report a retryable `MCP_PROXY_HTTP_ERROR` with the HTTP status.
-
-## 1.4.0 - 2026-08-12
+## 1.4.2 - 2026-08-21
 
 - Add hidden notebook opening: `mma_open_notebook` accepts `visible: false` to open an existing `.nb` in a hidden Wolfram FrontEnd window that still evaluates cells, and the notebook is registered with the bridge so the agent can read, insert, and run cells against it like any other notebook.
 - Add `mma_set_notebook_visible` tool to show or hide the selected notebook window in the Wolfram FrontEnd (`status: shown` / `hidden` / `unchanged`).
 - Tie hidden opens and window-visibility changes to the existing `OpenNotebook` permission, and surface `USER_DENIED` when a permission prompt is refused.
 - Keep tracked notebooks (including hidden ones) alive in the agent heartbeat so background notebooks are no longer swept as stale, while ignoring notebooks already closed in the FrontEnd so they are not revived.
 - Route `visible: false` opens through the live control agent with a 60-second window for the permission prompt; visible opens keep using the local OS default application.
+- Remove the retired legacy stdio bridge path (`src/index.ts`, `src/bridge/`, `src/mcp/tools.ts`, `src/types.ts`, `src/runtimeOptions.ts`, `src/cli/stop.ts`) and its test suites; the Bun backend with the HTTP proxy MCP server is now the single supported runtime.
+- Drop the legacy dev scripts and the installer warning for the removed Node fallback build.
+- Add GitHub repository hygiene files: release workflow, CODEOWNERS, issue/PR templates, and Dependabot config.
+
+## 1.4.1 - 2026-08-17
+
+- Keep only live agents in the status and dashboard views. Agents retired after their last notebook closes, or marked offline after a broken connection, are retained briefly for protocol recovery and then pruned from the registry instead of accumulating indefinitely.
+- Preserve structured backend error payloads when the MCP proxy receives a non-success HTTP response. JSON errors now retain their original code and message; non-JSON responses report a retryable `MCP_PROXY_HTTP_ERROR` with the HTTP status.
 
 ## 1.3.1 - 2026-07-26
 

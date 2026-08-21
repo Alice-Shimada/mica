@@ -440,11 +440,6 @@ export function runInstaller(argv = process.argv.slice(2)) {
     warnings.push(
       "bun was not found on PATH; the Bun MCP snippet is still printed for machines that have Bun installed."
     );
-  const nodeFallbackPath = path.join(bridgeRoot, "dist", "src", "index.js");
-  if (!existsSync(nodeFallbackPath))
-    warnings.push(
-      `Built Node fallback is missing: ${nodeFallbackPath}\nRun npm run build before using the Node fallback snippet.`
-    );
 
   const lines = [];
   lines.push(

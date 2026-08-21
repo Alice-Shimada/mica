@@ -130,8 +130,6 @@ node dist/src/cli/index.js uninstall
 
 MICA keeps its hidden FrontEnd control loop available while Wolfram Desktop remains open so it can discover notebooks opened later in the same session. Status and dashboard views show only live agents; agents that have lost their connection are retired or marked offline, then pruned after a short recovery window. When the MCP proxy receives an HTTP error from the local backend, it preserves structured JSON error details where available and otherwise reports the HTTP status as `MCP_PROXY_HTTP_ERROR`, rather than collapsing the failure into a generic internal error.
 
-The legacy installer entry remains available for compatibility: `node scripts/install.js --dry-run`.
-
 ## MCP Client Config
 
 Print a copy-pasteable MCP config snippet:
@@ -284,7 +282,6 @@ Common commands:
 | `npm run dev:bridge` | Start the TypeScript bridge and dashboard without stdio MCP. |
 | `npm run dev:bun:mcp` | Start the MCP server through Bun. |
 | `npm run dev:bun` | Start the bridge and dashboard through Bun without stdio MCP. |
-| `npm run dev:legacy` | Start the legacy Node HTTP bridge for Palette compatibility testing. |
 | `npm run build` | Emit production JavaScript under `dist/`. |
 
 ## Verification Checklist
@@ -362,7 +359,6 @@ Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`
 - `mma_open_notebook` requires an absolute path to an existing `.nb` file; visible opens also need a local OS file association for Mathematica/Wolfram Desktop, while hidden opens (`visible: false`) need a live MICA agent so they can run in the hidden FrontEnd window.
 - Cell ids are session-local and can change after reopening a notebook.
 - FrontEnd notebook operations are currently serialized.
-- The legacy Palette flow remains only for compatibility during migration; the documented release path is the CLI plus MCP server.
 
 ## License
 

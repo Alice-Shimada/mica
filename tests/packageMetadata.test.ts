@@ -28,8 +28,8 @@ describe("package.json metadata", () => {
     expect(pkg.name).toBe("@aliceshimada/mica");
   });
 
-it("has version 1.4.1", () => {
-    expect(pkg.version).toBe("1.4.1");
+it("has version 1.4.2", () => {
+    expect(pkg.version).toBe("1.4.2");
   });
 
   it("is the runtime version source", () => {

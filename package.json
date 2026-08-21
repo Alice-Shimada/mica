@@ -1,6 +1,6 @@
 {
   "name": "@aliceshimada/mica",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Local MCP bridge for controlling live Wolfram Desktop / Mathematica notebooks.",
   "type": "module",
   "repository": {
@@ -25,9 +25,7 @@
     "dist/src/backend",
     "dist/src/bun",
     "dist/src/cli",
-    "!dist/src/cli/stop.js",
     "dist/src/mcp",
-    "!dist/src/mcp/tools.js",
     "dist/src/runtime",
     "paclet",
     "README.md",
@@ -45,8 +43,6 @@
     "dev:bridge": "tsx src/bun/index.ts --bridge-only",
     "dev:bun:mcp": "bun run src/bun/index.ts",
     "dev:bun": "bun run src/bun/index.ts --bridge-only",
-    "dev:legacy": "tsx src/index.ts --bridge-only",
-    "dev:legacy:mcp": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
