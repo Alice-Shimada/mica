@@ -321,6 +321,29 @@ expect(registrations.map((entry) => entry.name)).toEqual([
     }
   });
 
+  it.each(["mma_insert_cell", "mma_modify_cell"])("accepts and forwards LaTeX format for %s", async (tool) => {
+    const state = makeState();
+    const notebook = makeNotebook(state);
+    const registration = registrationByName(registerTools(state), tool);
+    const schema = z.object(registration.schema as ZodRawShape).strict();
+    const args = {
+      notebookId: notebook.notebookId,
+      content: "\\\\frac{a}{b}",
+      format: "latex",
+      ...(tool === "mma_modify_cell" ? { cellId: "cell-1" } : { afterCellId: "__end__" }),
+    };
+
+    expect(schema.safeParse(args).success).toBe(true);
+    expect(schema.safeParse({ ...args, format: "html" }).success).toBe(false);
+    expect(schema.safeParse({ ...args, format: undefined }).success).toBe(true);
+    const parsed = schema.parse(args);
+    const pending = registration.handler(parsed);
+    const queued = state.queue.snapshot().queued[0]!;
+    expect(queued.arguments).toMatchObject(args);
+    state.queue.resolve(queued.requestId, { status: "inserted" }, Date.now());
+    await expect(pending).resolves.toMatchObject({ structuredContent: { ok: true } });
+  });
+
   it("registers read_artifact pagination arguments and forwards them to the hidden agent", async () => {
     const state = makeState();
     const notebook = makeNotebook(state, { displayName: "Shared.nb", windowTitle: "Shared.nb" });

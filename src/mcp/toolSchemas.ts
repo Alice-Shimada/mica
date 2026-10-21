@@ -8,6 +8,7 @@ const notebookSelectorFields = {
   displayName: z.string().min(1).optional()
 };
 const maxBytesField = z.number().int().positive().max(1024 * 1024);
+const cellFormatField = z.enum(["plain", "latex"]).optional().describe("Use latex for a simple math formula rendered as a non-evaluating DisplayFormula cell; plain preserves existing code/text behavior.");
 
 export const selectNotebookSchema = z.object({
   notebookId: notebookIdField.optional(),
@@ -24,12 +25,14 @@ export const insertCellSchema = z.object({
   ...notebookSelectorFields,
   afterCellId: z.string().min(1).optional(),
   style: z.string().min(1).default("Input"),
+  format: cellFormatField,
   content: z.string()
 }).strict();
 
 export const modifyCellSchema = z.object({
   ...notebookSelectorFields,
   cellId: z.string().min(1),
+  format: cellFormatField.describe("Use latex to render a simple formula; omitted format preserves an existing MICA LaTeX cell's format."),
   content: z.string()
 }).strict();
 

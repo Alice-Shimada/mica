@@ -926,7 +926,17 @@ StartMMAAgentPalette[] := Module[{},
   CreatePalette[PaletteView[], WindowTitle -> "MMA Agent Bridge", Saveable -> False]
 ];
 
-CellContentString[cell_CellObject] := Module[{expr, content},
+CellContentFormat[cell_CellObject] := If[
+  Quiet @ Check[CurrentValue[cell, {TaggingRules, "MICA", "format"}], Inherited] === "latex",
+  "latex",
+  "plain"
+];
+
+CellContentString[cell_CellObject] := Module[{expr, content, latexSource},
+  If[CellContentFormat[cell] === "latex",
+    latexSource = Quiet @ Check[CurrentValue[cell, {TaggingRules, "MICA", "source"}], $Failed];
+    If[StringQ[latexSource], Return[latexSource]]
+  ];
   expr = Quiet @ Check[NotebookRead[cell], $Failed];
   If[expr === $Failed, Return[""]];
   content = Replace[
@@ -1325,7 +1335,7 @@ ReadCellById[args_Association] := Module[{notebookId, record, cellId, cell, maxB
   With[{artifacts = CellArtifactScan[cell, cellId, Lookup[record, "notebook", None]]},
     payload = TruncatePayloadFields[CellContentString[cell], artifacts["outputs"], artifacts["messages"], maxBytes, True];
     Join[
-      <|"cellId" -> cellId, "style" -> CellStyleName[cell]|>,
+      <|"cellId" -> cellId, "style" -> CellStyleName[cell], "format" -> CellContentFormat[cell]|>,
       payload,
       <|"status" -> artifacts["status"]|>
     ]
@@ -1390,7 +1400,42 @@ ReadArtifactById[args_Association] := Module[{notebookId, record, artifactId, pa
   |>
 ];
 
-MakeCellExpression[content_String, style_String] := Module[{cellStyle = If[StringQ[style] && StringLength[style] > 0, style, "Input"]},
+MakeLatexCellExpression[content_String] := Module[{commands, unsupported, held, boxes},
+  If[StringTrim[content] === "",
+    Return[BridgeFailure["INVALID_LATEX", "The LaTeX formula must not be empty."]]
+  ];
+  (* The native TeX importer silently drops unknown commands; reject them first. *)
+  commands = StringDrop[#, 1] & /@ StringCases[content, RegularExpression["\\\\[A-Za-z]+"]];
+  unsupported = Complement[commands, {
+    "frac", "sqrt", "left", "right", "cdot", "times", "pm", "mp",
+    "le", "leq", "ge", "geq", "ne", "neq", "approx", "equiv", "infty",
+    "sin", "cos", "tan", "exp", "log", "ln", "int", "sum", "prod", "lim",
+    "partial", "nabla", "alpha", "beta", "gamma", "delta", "epsilon",
+    "varepsilon", "zeta", "eta", "theta", "vartheta", "iota", "kappa",
+    "lambda", "mu", "nu", "xi", "pi", "varpi", "rho", "varrho",
+    "sigma", "varsigma", "tau", "upsilon", "phi", "varphi", "chi",
+    "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi",
+    "Sigma", "Upsilon", "Phi", "Psi", "Omega"
+  }];
+  If[Length[unsupported] > 0,
+    Return[BridgeFailure["UNSUPPORTED_LATEX", "Unsupported LaTeX command(s): " <> StringRiffle[unsupported, ", "]]]
+  ];
+  held = Quiet @ Check[ToExpression[content, TeXForm, HoldComplete], $Failed];
+  If[!MatchQ[held, HoldComplete[_]] || !FreeQ[held, $Failed] || MatchQ[held, HoldComplete[Null]],
+    Return[BridgeFailure["INVALID_LATEX", "The LaTeX formula could not be parsed."]]
+  ];
+  boxes = Quiet @ Check[Replace[held, HoldComplete[expr_] :> MakeBoxes[expr, TraditionalForm]], $Failed];
+  If[boxes === $Failed,
+    Return[BridgeFailure["INVALID_LATEX", "The LaTeX formula could not be formatted."]]
+  ];
+  Cell[BoxData[FormBox[boxes, TraditionalForm]], "DisplayFormula",
+    Evaluatable -> False, CellTags -> {"AI-Generated"},
+    TaggingRules -> <|"MICA" -> <|"format" -> "latex", "source" -> content|>|>]
+];
+
+MakeCellExpression[content_String, style_String, format_String:"plain"] := Module[{cellStyle = If[StringQ[style] && StringLength[style] > 0, style, "Input"]},
+  If[format === "latex", Return[MakeLatexCellExpression[content]]];
+  If[format =!= "plain", Return[BridgeFailure["BAD_REQUEST", "Cell format must be plain or latex."]]];
   If[cellStyle === "Input",
     Cell[BoxData[content], "Input", CellTags -> {"AI-Generated"}],
     Cell[content, cellStyle, CellTags -> {"AI-Generated"}]
@@ -1441,7 +1486,8 @@ InsertCellRequest[args_Association] := Module[{notebookId, record, afterId, styl
   style = Lookup[args, "style", "Input"];
   content = Lookup[args, "content", ""];
   If[!StringQ[content], Return[Failure["BAD_REQUEST", <|"Message" -> "Cell content must be a string."|>]]];
-  newCell = MakeCellExpression[content, style];
+  newCell = MakeCellExpression[content, style, Lookup[args, "format", "plain"]];
+  If[MatchQ[newCell, _Failure], Return[newCell]];
   cells = Cells[notebook];
   If[StringQ[afterId] && Length[cells] == 0,
     inserted = InsertCellAtBeginning[notebook, newCell],
@@ -1483,7 +1529,8 @@ ModifyCellRequest[args_Association] := Module[{notebookId, record, notebook, cel
   style = CellStyleName[cell];
   content = Lookup[args, "content", ""];
   If[!StringQ[content], Return[Failure["BAD_REQUEST", <|"message" -> "Cell content must be a string."|>]]];
-  newCell = MakeCellExpression[content, style];
+  newCell = MakeCellExpression[content, style, Lookup[args, "format", CellContentFormat[cell]]];
+  If[MatchQ[newCell, _Failure], Return[newCell]];
   writeResult = Quiet @ Check[NotebookWrite[cell, newCell], $Failed];
   If[writeResult === $Failed, Return[Failure["MODIFY_FAILED", <|"message" -> "The FrontEnd failed to modify the cell."|>]]];
   updatedCells = Cells[notebook];

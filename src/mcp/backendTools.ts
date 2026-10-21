@@ -169,7 +169,7 @@ const queuedNotebookTools: QueuedNotebookTool[] = [
   },
   {
     name: "mma_insert_cell",
-    summary: "Insert a cell through the Mathematica FrontEnd bridge.",
+    summary: "Insert a cell through the Mathematica FrontEnd bridge. Set format=\"latex\" with a simple LaTeX math body (no document or custom macros) to insert a rendered, non-evaluating formula; style is then DisplayFormula.",
     schema: insertCellSchema.shape,
     permission: "InsertCell",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.insertCell,
@@ -178,7 +178,7 @@ const queuedNotebookTools: QueuedNotebookTool[] = [
   },
   {
     name: "mma_modify_cell",
-    summary: "Modify one existing cell through the Mathematica FrontEnd bridge.",
+    summary: "Modify one existing cell through the Mathematica FrontEnd bridge. Set format=\"latex\" to render a simple formula. Existing MICA LaTeX cells keep their format when it is omitted; content is LaTeX source.",
     schema: modifyCellSchema.shape,
     permission: "ModifyCell",
     timeoutMs: () => DEFAULT_TIMEOUTS_MS.mutation,

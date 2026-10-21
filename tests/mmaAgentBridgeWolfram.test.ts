@@ -7,6 +7,30 @@ const launcherPath = new URL("../paclet/FrontEnd/Palettes/MMAAgentBridge.nb", im
 const countOccurrences = (haystack: string, needle: string) => haystack.split(needle).length - 1;
 
 describe("MMAAgentBridge Wolfram notebook dispatcher", () => {
+  it("builds held LaTeX formula cells and rejects invalid conversions before writing", () => {
+    const start = source.indexOf("MakeLatexCellExpression[content_String]");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("InsertCellAtLocation[", start));
+    expect(body).toContain("ToExpression[content, TeXForm, HoldComplete]");
+    expect(body).toContain("!FreeQ[held, $Failed]");
+    expect(body).toContain("MakeBoxes[expr, TraditionalForm]");
+    expect(body).toContain('"DisplayFormula"');
+    expect(body).toContain("Evaluatable -> False");
+    expect(body).toContain('"UNSUPPORTED_LATEX"');
+    expect(body).toContain('"INVALID_LATEX"');
+    expect(body).not.toContain("ReleaseHold");
+    expect(source).toContain('newCell = MakeCellExpression[content, style, Lookup[args, "format", "plain"]]');
+    expect(countOccurrences(source, 'If[MatchQ[newCell, _Failure], Return[newCell]]')).toBe(2);
+  });
+
+  it("preserves LaTeX source and format across cell reads and edits", () => {
+    expect(source).toContain('TaggingRules -> <|"MICA" -> <|"format" -> "latex", "source" -> content|>|>');
+    expect(source).toContain('CellContentFormat[cell_CellObject]');
+    expect(source).toContain('Lookup[args, "format", CellContentFormat[cell]]');
+    expect(source).toContain('"format" -> CellContentFormat[cell]');
+    expect(source).toContain('CurrentValue[cell, {TaggingRules, "MICA", "source"}]');
+  });
+
   it("defines the notebook registry helpers and routing wiring", () => {
     const requiredSnippets = [
       '$BridgeNotebooks = <||>',

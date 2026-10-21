@@ -51,7 +51,7 @@ When changing installer behavior, update installer tests. When changing MCP tool
 
 Maintainer-only. To publish a release:
 
-1. Bump the version in `package.json` and update `CHANGELOG.md`.
+1. Bump the version in `package.json`, `package-lock.json`, and `paclet/PacletInfo.wl`; update `CHANGELOG.md`, both READMEs, and the package metadata test.
 2. Commit and tag with `vX.Y.Z`.
 3. Push the tag. The `release.yml` workflow publishes to npm and creates a GitHub release.
 
@@ -59,6 +59,17 @@ Maintainer-only. To publish a release:
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
+
+The `v*` tag workflow requires the repository's `NPM_TOKEN` secret and publishes
+to npm before creating the GitHub release. To prepare npm publication separately,
+use an unprefixed `X.Y.Z` tag (as in `1.4.2` and `1.5.0`), create the GitHub
+release with reviewed notes, and attach the verified `npm pack` tarball and its
+SHA-256 checksum. An unprefixed tag does not trigger the npm publishing workflow.
+
+Before manual npm publication, run the development checks, `npm pack --dry-run`,
+and `npm publish <tarball> --access public --dry-run`; smoke-test an installation
+of the packed tarball in a fresh directory. Authenticate with `npm login`, then
+publish that exact tarball with `npm publish <tarball> --access public`.
 
 ## Code style
 

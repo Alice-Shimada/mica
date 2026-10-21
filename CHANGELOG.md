@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.5.0 - 2026-10-21
+
+- Add `format: "latex"` to `mma_insert_cell` and `mma_modify_cell` for simple formulas rendered as native, non-evaluating `DisplayFormula` cells.
+- Support fractions, roots, subscripts/superscripts, Greek letters, basic functions, sums, and integrals through Mathematica's native TeX importer. Formula insertion does not require running a cell.
+- Keep expressions held during parsing and box construction so display does not compute arithmetic or substitute existing variable values.
+- Preserve LaTeX source in cell metadata. `mma_read_cell` returns the stored source and format; modifying an existing MICA formula preserves its format when omitted.
+- Reject empty or invalid formulas with `INVALID_LATEX`, and unsupported commands or environments with `UNSUPPORTED_LATEX`, without inserting or replacing cells. Explicit command checks prevent the native importer from silently dropping unknown commands.
+- Add backend schema/queue, proxy, Wolfram dispatcher, and opt-in live notebook regression coverage. Validate 15 live checks on Mathematica 13.3 on Windows and visually inspect the rendered formula examples; this does not expand the overall supported-version matrix.
+- Document formula usage, source metadata limitations, and the bridge/client reload required after upgrading. Custom LaTeX macros, full documents, and environments remain outside this release's scope.
+
 ## 1.4.2 - 2026-08-21
 
 - Add hidden notebook opening: `mma_open_notebook` accepts `visible: false` to open an existing `.nb` in a hidden Wolfram FrontEnd window that still evaluates cells, and the notebook is registered with the bridge so the agent can read, insert, and run cells against it like any other notebook.

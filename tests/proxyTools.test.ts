@@ -32,6 +32,23 @@ function registrationByName(registrations: ToolRegistration[], name: string) {
 }
 
 describe("proxy MCP tools", () => {
+  it("forwards LaTeX arguments and returns formula parse failures unchanged", async () => {
+    let forwarded: unknown;
+    const failure = {
+      content: [{ type: "text", text: "Invalid LaTeX" }],
+      structuredContent: { ok: false, error: { code: "INVALID_LATEX", retryable: false } },
+      isError: true,
+    };
+    const registrations = registerTools(async (_url, init) => {
+      forwarded = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify(failure), { status: 200 });
+    });
+    const args = { notebookId: "notebook-1", content: "\\\\frac{", format: "latex" };
+    const result = await registrationByName(registrations, "mma_insert_cell").handler(args);
+    expect(forwarded).toMatchObject({ tool: "mma_insert_cell", arguments: args });
+    expect(result).toEqual(failure);
+  });
+
   it("registers the same public MICA tool names as the backend server", () => {
     const registrations = registerTools(async () => new Response("{}"));
 

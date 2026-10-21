@@ -28,6 +28,16 @@ type ErrorDefinition = {
 };
 
 const ERROR_DEFINITIONS: Record<string, ErrorDefinition> = {
+  INVALID_LATEX: {
+    code: "INVALID_LATEX",
+    message: "The LaTeX formula could not be parsed. Provide a non-empty, valid math expression.",
+    retryable: false,
+  },
+  UNSUPPORTED_LATEX: {
+    code: "UNSUPPORTED_LATEX",
+    message: "The formula contains unsupported LaTeX commands. Only simple math expressions are supported.",
+    retryable: false,
+  },
   BAD_REQUEST: {
     code: "BAD_REQUEST",
     message: "The MCP tool arguments are invalid.",

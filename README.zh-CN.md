@@ -5,6 +5,7 @@
 简体中文 | [English](README.md)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-1.5.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?logo=node.js&logoColor=white)
 ![Bun](https://img.shields.io/badge/runtime-Bun-f3e7d3?logo=bun&logoColor=111111)
 ![MCP](https://img.shields.io/badge/protocol-MCP-2563eb)
@@ -19,6 +20,7 @@ MICA 是一个面向 Wolfram Desktop / Mathematica 的本地 MCP 桥接器。它
 
 - **直接作用于真实 Notebook**：Agent 操作的是 Wolfram Desktop 中可见的 Notebook，而不是一个分离的 headless kernel。
 - **Agent 的工作对人可见**：插入的代码、输出、消息和编辑都会出现在 Notebook 里，方便你检查。
+- **原生公式显示**：传入 `format: "latex"`，即可把简单 LaTeX 插入为 Notebook 公式，并通过原有单元格工具读取、修改源码。
 - **Notebook lifecycle 工具**：Agent 可以列出、选择、创建、打开、保存和恢复 Notebook，不需要离开 MCP 工作流。
 - **Notebook-aware targeting**：Agent 可以选择目标 Notebook，并为会修改 Notebook 的工具启用严格目标选择。
 - **面向 Agent 的协议设计**：`mma_status`、`mma_list_notebooks`、结构化错误、有界输出、artifact 分页，以及 `mica_notebook_workflow` prompt 会告诉 Agent 如何安全推进。
@@ -351,6 +353,41 @@ Doctor 会检查 Node 版本、package build、session file、auth token、serve
 ## 显式 Notebook Targeting
 
 设置 `MICA_STRICT_TARGETING=1` 后，所有需要目标 Notebook 且会修改状态的 MCP 工具（`mma_insert_cell`、`mma_modify_cell`、`mma_delete_cell`、`mma_run_cell`、`mma_abort_evaluation`、`mma_kill_kernel`、`mma_restart_kernel`、`mma_save_notebook`、`mma_set_notebook_visible`）都必须显式提供 `notebookId`（或 `displayName`）。只读 Notebook 工具（`mma_list_cells`、`mma_read_cell`、`mma_get_cell_output`、`mma_read_artifact`）仍然使用 active Notebook，`mma_symbol_lookup` 不受影响，因为它不针对某个 Notebook。`mma_open_notebook` 也不需要 Notebook selector，因为它是在 Notebook 获得 session-local `notebookId` 之前打开文件路径。启用 strict targeting 后，如果未提供 selector，工具会返回 error code `EXPLICIT_NOTEBOOK_REQUIRED`，并设置 `retryable: false`。默认行为（未设置 env var，或值不是 `"1"`）保持不变。
+
+## LaTeX 公式单元格
+
+此功能自 **1.5.0** 起提供。该版本发布到 npm 后，可执行
+`npm install -g @aliceshimada/mica@1.5.0` 升级，再运行 `mica install`，
+完全退出并重启 Wolfram Desktop，最后重新连接 MCP client。
+这会同时更新 Wolfram bridge 和工具参数定义；只升级 Node 包不会刷新已运行的控制 Agent。
+
+给 `mma_insert_cell` 传入 `format: "latex"`，即可直接插入原生、不可求值的
+`DisplayFormula` 公式单元格，无须再调用 `mma_run_cell`：
+
+```json
+{
+  "notebookId": "<当前 notebookId>",
+  "afterCellId": "__end__",
+  "format": "latex",
+  "content": "\\\\frac{a^2+b^2}{c^2}"
+}
+```
+
+第一版处理简单数学表达式，支持分式、根号、希腊字母、基本函数、求和与积分；
+不支持完整 LaTeX 文档、自定义宏和环境。未知命令返回 `UNSUPPORTED_LATEX`，
+无法解析的公式返回 `INVALID_LATEX`，失败时不会插入或替换单元格。
+具体排版以 Mathematica 原生 TeX 导入器为准。
+
+`mma_read_cell` 返回保存的 LaTeX 源码和 `format: "latex"`。
+`mma_modify_cell` 省略 `format` 时保留已有公式的格式，也可显式指定 `latex`。
+LaTeX 模式始终使用 `DisplayFormula` 样式。源码元数据记录最后一次 MICA 编辑；
+手工在 FrontEnd 中修改公式 boxes 不会更新这份源码。
+普通代码和文本插入仍可省略 `format`。升级后需重新加载 Wolfram bridge，
+并重新连接 MCP client，使转换逻辑和工具参数定义同时更新。
+
+公式流程已在 Windows 上的 Mathematica 13.3 中完成 15 项在线检查，覆盖原生
+boxes、不求值、源码读写、修改及错误处理；版本详情见 [CHANGELOG.md](CHANGELOG.md)。
+项目整体支持的版本范围保持不变。
 
 ## 已知限制
 

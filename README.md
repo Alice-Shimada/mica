@@ -5,6 +5,7 @@
 English | [简体中文](README.zh-CN.md)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-1.5.0-green)
 ![Node](https://img.shields.io/badge/node-%3E%3D20-5FA04E?logo=node.js&logoColor=white)
 ![Bun](https://img.shields.io/badge/runtime-Bun-f3e7d3?logo=bun&logoColor=111111)
 ![MCP](https://img.shields.io/badge/protocol-MCP-2563eb)
@@ -19,6 +20,7 @@ MICA is a local MCP bridge for Wolfram Desktop / Mathematica. It lets an MCP-cap
 
 - **Works in real notebooks**: the agent acts on visible Wolfram Desktop notebooks, not a detached headless kernel.
 - **Human-visible agent work**: inserted code, outputs, messages, and edits appear in the notebook where you can review them.
+- **Rendered math formulas**: insert simple LaTeX as native notebook formulas with `format: "latex"`; read and update the source through the same cell tools.
 - **Notebook lifecycle tools**: agents can list, select, create, open, save, and recover notebooks without leaving the MCP workflow.
 - **Notebook-aware targeting**: agents can select the intended notebook and use strict targeting for mutating tools.
 - **Agent-friendly protocol**: `mma_status`, `mma_list_notebooks`, structured errors, bounded outputs, artifact paging, and the `mica_notebook_workflow` prompt tell agents how to proceed safely.
@@ -351,6 +353,45 @@ If the doctor passes but you still see `NO_LIVE_AGENT`, `NOTEBOOK_STALE`, or con
 ## Explicit Notebook Targeting
 
 Set `MICA_STRICT_TARGETING=1` to require explicit `notebookId` (or `displayName`) for all notebook-targeted mutating MCP tools (`mma_insert_cell`, `mma_modify_cell`, `mma_delete_cell`, `mma_run_cell`, `mma_abort_evaluation`, `mma_kill_kernel`, `mma_restart_kernel`, `mma_save_notebook`, `mma_set_notebook_visible`). Read-only notebook tools (`mma_list_cells`, `mma_read_cell`, `mma_get_cell_output`, `mma_read_artifact`) continue to use the active notebook, and `mma_symbol_lookup` is unaffected because it does not target a notebook. `mma_open_notebook` also does not require a notebook selector because it opens a file path before the notebook has a session-local `notebookId`. When strict targeting is enabled and no selector is provided, the tool returns error code `EXPLICIT_NOTEBOOK_REQUIRED` with `retryable: false`. Default behavior (no env var or any value other than `"1"`) is unchanged.
+
+## LaTeX Formula Cells
+
+Available since **1.5.0**. To upgrade, run `npm install -g @aliceshimada/mica@1.5.0`
+after this version is published to npm, then run `mica install`, fully restart
+Wolfram Desktop, and reconnect MCP clients. This refreshes both the Wolfram bridge
+and the tool schemas; upgrading the Node package alone is insufficient for an
+already-running control agent.
+
+Pass `format: "latex"` to `mma_insert_cell` to insert a simple formula as a native,
+non-evaluating `DisplayFormula` cell. No separate `mma_run_cell` call is needed:
+
+```json
+{
+  "notebookId": "<current notebookId>",
+  "afterCellId": "__end__",
+  "format": "latex",
+  "content": "\\\\frac{a^2+b^2}{c^2}"
+}
+```
+
+Use a math expression rather than a LaTeX document. Supported commands include
+fractions, square roots, Greek letters, basic functions, sums, and integrals;
+custom macros and environments are not supported. Unknown commands return
+`UNSUPPORTED_LATEX`; invalid formulas return `INVALID_LATEX` without inserting or
+replacing a cell. Mathematica's native TeX importer determines the final layout.
+
+`mma_read_cell` returns the stored LaTeX source and `format: "latex"`.
+`mma_modify_cell` preserves this format when omitted, or accepts `format: "latex"`
+explicitly. In LaTeX mode, the cell style is always `DisplayFormula`.
+The source metadata records the last MICA edit; manual FrontEnd edits to the
+rendered boxes do not update that source. Omit `format` for existing code/text
+insertion behavior. Reload the Wolfram bridge and reconnect MCP clients after
+upgrading so both the converter and tool schemas are refreshed.
+
+The formula workflow was live-tested on Mathematica 13.3 on Windows (15 checks),
+including native box structure, non-evaluation, source round trips, edits, and
+failure handling. See [CHANGELOG.md](CHANGELOG.md) for release details. The overall
+supported-version matrix remains unchanged.
 
 ## Known Limitations
 

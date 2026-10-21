@@ -28,12 +28,22 @@ describe("package.json metadata", () => {
     expect(pkg.name).toBe("@aliceshimada/mica");
   });
 
-it("has version 1.4.2", () => {
-    expect(pkg.version).toBe("1.4.2");
+it("has version 1.5.0", () => {
+    expect(pkg.version).toBe("1.5.0");
   });
 
   it("is the runtime version source", () => {
     expect(MICA_PACKAGE_VERSION).toBe(pkg.version);
+  });
+
+  it("keeps lockfile and paclet release versions synchronized", () => {
+    const lock = readJson(path.join(PROJECT_ROOT, "package-lock.json")) as {
+      version: string;
+      packages: Record<string, { version: string }>;
+    };
+    expect(lock.version).toBe(pkg.version);
+    expect(lock.packages[""]!.version).toBe(pkg.version);
+    expect(readText(path.join(PROJECT_ROOT, "paclet/PacletInfo.wl"))).toContain(`"Version" -> "${pkg.version}"`);
   });
 
   it("has repository pointing to Alice-Shimada/mica", () => {
